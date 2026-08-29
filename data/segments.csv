@@ -1,14 +1,16 @@
 clip_id,class,start_s,end_s,confidence,notes
+idle_01,idle,0.0,2.0,high,standing still before first gesture
 raise_right_hand_01,raise_right_hand,2.2,5.4,high,person's right arm (viewer-left in frame) raised and held; subject faces camera
 raise_left_hand_01,raise_left_hand,5.9,7.4,medium,person's left arm (viewer-right) raised; short hold (~1.5s)
 ok_01,ok,13.1,14.6,high,thumb+index circle other three fingers up; right hand near head
 two_finger_01,two_finger,16.1,19.0,high,index+middle V (peace); right hand
-i_love_you_01,i_love_you,20.5,25.2,medium,index+pinky+thumb all extended (ILY); right hand. ILY vs rock boundary near t=25 is approximate
-rock_01,rock,25.6,29.0,medium,index+pinky up thumb folded; right hand. verify against i_love_you_01 - handshapes are close on this clip
-squat_01,squat,53.6,57.2,medium,deep crouch hands toward floor; lower body partly occluded by robot in foreground
-sit_01,sit,60.3,65.6,medium,seated upright on the robot platform feet on floor hands on knees
-review_01,,0.0,2.0,,standing still before first gesture - probably idle
-review_02,,7.8,12.8,,walking/turning between the hand-raises and the hand-gestures - probably idle
-review_03,,29.5,52.5,,"arms-overhead, star jumps, heart-hands overhead. does not match a target class - your call (idle? or an intended gesture?)"
-review_04,,57.2,60.3,,floor transition squat -> sitting down
-review_05,,65.6,73.5,,"floor: sitting then curled on the floor. possibly 'laying' but no clear supine/prone pose and heavy occlusion - your call"
+i_love_you_01,i_love_you,20.5,25.2,medium,index+pinky+thumb all extended (ILY); right hand. ILY vs rock boundary near t=25 approximate
+rock_01,rock,25.6,29.0,medium,index+pinky up thumb folded; right hand. verify against i_love_you_01 - handshapes are close on this take
+heart_01,heart,31.3,34.0,medium,both hands overhead forming a big heart
+t_pose_01,t_pose,34.4,35.8,medium,arms straight out to the sides horizontal. NOTE appears in the video BEFORE mini_heart not after
+mini_heart_01,mini_heart,45.0,47.0,low,small heart made between both hands overhead. finger-heart detail not visible at this distance - verify
+glico_guess_01,,38.0,40.2,low,CANDIDATE for the Glico / running-man pose (arms up + jump). could NOT confirm a held one-leg-raise anywhere - you need to point me at it
+squat_01,squat,53.6,57.2,medium,deep crouch hands toward floor; lower body partly occluded by the robot
+laying_01,laying,57.2,60.3,medium,"your call (was review_04). first ~1.5s is the squat->floor transition; actual lying-back is ~t=59.3-60.3"
+sit_01,sit,61.0,65.6,medium,trimmed start per your note (was lying then sat up). seated upright on the robot platform feet on floor
+sit_02,sit,65.6,71.5,medium,your call (was review_05). trimmed the stand-up at the tail (~t=71.5+)
