@@ -1,0 +1,19 @@
+# data — keep raw clips and datasets out of git (versioned separately, see DATA_COLLECTION_SPEC.md)
+/data/*
+!/data/.gitkeep
+
+# models / weights
+*.pt
+*.task
+*.onnx
+/classifier/models/*
+!/classifier/models/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# misc
+.DS_Store

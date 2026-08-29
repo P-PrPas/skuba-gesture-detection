@@ -1,0 +1,5 @@
+# Phase 0 — backbones + smoke test
+mediapipe==0.10.21
+opencv-python==4.11.0.86
+numpy<2.0
+ultralytics==8.3.55   # YOLO-pose, second pose-backbone candidate for Phase 1
