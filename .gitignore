@@ -1,6 +1,8 @@
 # data — keep raw clips and datasets out of git (versioned separately, see DATA_COLLECTION_SPEC.md)
 /data/*
 !/data/.gitkeep
+# label answer-key — small, text, worth tracking
+!/data/segments.csv
 
 # models / weights
 *.pt

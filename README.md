@@ -36,6 +36,18 @@ python smoke_test.py --source data/main.MOV --save out.mp4 --max-frames 200
 Overlays body skeleton + wrist-anchored hand landmarks. `--pose {mediapipe,yolo}`
 selects the body backbone (Phase 1 picks one and locks it).
 
+## Dataset
+
+`data/main.MOV` is one long take covering every class. `data/segments.csv` is
+the hand-checked label key (start/end seconds + confidence). Regenerate the
+per-class sub-clips with:
+
+```bash
+python scripts/cut_segments.py data/main.MOV data/segments.csv data/clips
+```
+
+Clips with an empty `class` land in `data/clips/_review/` for you to label.
+
 ## Layout
 
 ```
