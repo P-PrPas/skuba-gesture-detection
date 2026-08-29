@@ -1,60 +1,49 @@
-# Phase 1 — backbone sanity check
+# Phase 1 — backbone benchmark
 
-Reproduce: `python scripts/phase1_eval.py` (annotated montages land in `scratch/phase1/`).
-Hard-case clips from `data/clips/`; subject is at ~2–4 m in the footage.
-Latency measured on the **Windows dev machine, CPU** — used as a proxy for the
-Ubuntu deploy laptop (per the owner's call). Numbers on the Acer will differ;
-treat the *ranking* as the durable result, the absolute ms as indicative.
+Full report with embedded montages: **`results/phase1/backbone_report.docx`**.
+Reproduce:
 
-## Body pose — posture hard cases (`laying_01`, `squat_01`, `sit_02`)
+```bash
+pip install -r requirements-phase1-gpu.txt --index-url https://download.pytorch.org/whl/cu124 \
+    --extra-index-url https://pypi.org/simple --trusted-host download.pytorch.org
+python scripts/phase1_eval.py --device cpu --annotate
+python scripts/phase1_eval.py --device gpu
+python scripts/phase1_report.py            # -> results/phase1/backbone_report.docx
+```
 
-| backbone | keypoint quality on the hard poses | latency (CPU) | person selection |
-|---|---|---|---|
-| **MediaPipe Pose** (complexity 1) | stable; skeleton plausible on all visible joints; occluded legs (robot in foreground) inferred sensibly, no wild jumps | **32–38 ms/frame** | single-person model — locked onto the subject in every clip |
-| YOLO11n-pose | body OK when locked, but frequent **flyaway head/face keypoints** placed at frame corners with high confidence; latches onto the **background bystander** in several frames | 49–62 ms/frame | naive top-1 box — picks the bystander |
-| RTMPose-t (rtmlib, ONNX, `lightweight`) | skeleton ≈ MediaPipe when locked; its YOLOX-tiny detector **also picked the bystander** (2/8 squat frames) | 153–213 ms/frame (≈5–6× MediaPipe) | two-stage — same bystander problem |
-| RTMPose-m (rtmlib, `balanced`) | not assessed | **1200–4600 ms/frame** — unusable on CPU | — |
+Host: Windows, RTX 3050 Laptop (4 GB), used as a proxy for the Acer/Ubuntu
+deploy laptop. Hard-case clips: `laying_01`, `squat_01`, `sit_02` (posture);
+`rock_01`, `ok_01`, `i_love_you_01`, `two_finger_01` (hands). Subject at ~2–4 m.
 
-`laying` caveat: `laying_01` has **no clean lying-flat segment** (mostly the
-squat→floor transition, heavily occluded). The "laying from the robot's low
-camera angle" hard case is **not yet properly tested** — needs a real recording,
-then re-run this.
+## Verdict: MediaPipe Pose + MediaPipe Hands
 
-## Hands — MediaPipe Hands on wrist-anchored crops
+| Backbone | VRAM | CPU ms/f (squat) | GPU ms/f | Detect | Keypoint quality |
+|---|---|---|---|---|---|
+| **MediaPipe Pose** | **0 (CPU)** | **38** (26 fps) | 37 (no GPU delegate) | 98% | Stable; no flyaway keypoints; single-person → never grabs the bystander |
+| YOLO11n-pose | 70 MB | 119 (8 fps) | **24** (42 fps) | 100% | Head keypoints fly to frame corners; skeleton jumps to the background bystander |
+| YOLO11s-pose | 130 MB | 198 (5 fps) | 21 (47 fps) | 100% | Torso cleaner than 11n, same flyaway + bystander issues |
+| RTMPose-t (rtmlib) | 359 MB | 167 (6 fps) | 37 (27 fps) | 100% | Usually clean; YOLOX-tiny detector picks the bystander sometimes |
+| RTMPose-m (rtmlib) | 611 MB | 356 (3 fps) | 83 (12 fps) | 100% | **Best skeleton** — clean through the deep crouch; but slow + bystander-prone |
 
-| clip | detection rate | notes |
-|---|---|---|
-| `rock_01` | 10/10 | folded fingers slightly jittery; index+pinky and overall handshape captured |
-| `i_love_you_01` | 10/10 | very stable |
-| `two_finger_01` | 8/8 | stable |
-| `ok_01` | 7/10 | 3 misses are all hand entering/leaving frame (motion blur), **none on the held gesture** |
+Combined MediaPipe (pose + 2 hand crops/frame): **116 ms ≈ 8.6 FPS** CPU
+(unchanged on the GPU pass — MediaPipe does not use the GPU). Hands are ~2/3 of it.
 
-≈ 35–38 ms per hand crop. Brief misses are exactly what the presence-flag +
-temporal-smoothing design absorbs.
+Hands (MediaPipe Hands on wrist crops): `rock` 102/102, `i_love_you` 141/141,
+`two_finger` 87/87, `ok` 35/45 (misses are hand entry/exit motion blur, not the
+held gesture). ~40–57 ms/crop.
 
-## Combined latency
+### Why MediaPipe, not the faster GPU option
 
-MediaPipe **pose + 2 hand crops per frame**, full `squat_01` (108 frames):
-**≈ 104 ms/frame ≈ 9.7 FPS** on the dev-machine CPU. Hands dominate (~76 ms for
-the two crops). No GPU delegate, no optimization.
-
-## Decision
-
-**Body pose: MediaPipe Pose. Hands: MediaPipe Hands.** Reasons, in order:
-
-1. Deployment target is a laptop whose VRAM is shared across robot modules
-   (CLAUDE.md). MediaPipe runs on CPU, 0 VRAM. YOLO-pose needs torch; RTMPose
-   needs onnxruntime + a separate detector.
-2. Best keypoint stability on the posture hard cases — no flyaway keypoints,
-   no bystander confusion (built-in single-person model).
-3. Fastest of the three on CPU.
-4. Hand landmarks on the overlapping-finger shapes (rock, ILY) are stable.
+YOLO11n on CUDA is the fastest at 24 ms / 42 FPS, but it costs 70 MB of the
+shared 4 GB GPU, a torch+CUDA runtime (~5 GB on disk), the flyaway-keypoint and
+bystander bugs, and a person-selection rewrite. The robot's GPU budget is the
+binding constraint (CLAUDE.md), so the 0-VRAM CPU option wins. RTMPose-m's nicer
+skeleton is not worth 600 MB + a second-stage detector.
 
 ## Open items before Phase 1 is fully signed off
 
-- [ ] Record a clean `laying` clip from the robot's camera height; re-run the
-      posture check for that pose specifically.
-- [ ] Confirm latency on the actual Acer/Ubuntu laptop, and agree a real-time
-      budget. ~10 FPS on CPU may be fine with temporal smoothing; if not, options
-      are the MediaPipe Tasks GPU delegate, lower-res hand crops, or
-      `static_image_mode=False` for the hand model.
+- [ ] Record a clean `laying` clip from the robot's camera height and re-run —
+      `laying_01` is mostly squat→floor transition and heavy occlusion.
+- [ ] Confirm the combined ~8–9 FPS on the actual Acer/Ubuntu laptop and agree a
+      real-time budget. If short: MediaPipe Tasks GPU delegate, smaller hand
+      crops, or `static_image_mode=False` for the hand model.

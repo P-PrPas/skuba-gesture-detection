@@ -4,4 +4,4 @@ opencv-python==4.11.0.86
 numpy<2.0
 ultralytics==8.3.55   # YOLO-pose — Phase 1 comparison only
 rtmlib==0.0.16        # RTMPose (ONNX) — Phase 1 comparison only
-onnxruntime==1.29.0   #   "
+onnxruntime==1.29.0   #   "  (swap for onnxruntime-gpu via requirements-phase1-gpu.txt to bench on CUDA)

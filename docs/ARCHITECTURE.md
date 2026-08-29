@@ -6,11 +6,12 @@ Companion to CLAUDE.md. This is where the concrete schemas and formulas live so 
 
 - **Body pose:** MediaPipe Pose, 33 landmarks, `model_complexity=1`.
 - **Hand landmarks:** MediaPipe Hands, 21 landmarks/hand, `static_image_mode=True`, run on wrist-anchored crops.
-- **Evidence for the choice** (full write-up: `docs/phase1_report.md`, reproduce with `scripts/phase1_eval.py`): MediaPipe vs YOLO11n-pose vs RTMPose (rtmlib/ONNX) on the posture + overlapping-finger hard cases, latency on the dev machine as a proxy for the Ubuntu laptop.
-  - VRAM: target laptop shares VRAM across robot modules (CLAUDE.md). MediaPipe = CPU, 0 VRAM. YOLO needs torch; RTMPose needs onnxruntime + a detector.
-  - Keypoint stability: MediaPipe was cleanest on `squat`/`sit`; YOLO threw high-confidence flyaway head keypoints and picked a background bystander; RTMPose's two-stage detector also picked the bystander.
-  - Latency (CPU): MediaPipe pose 32–38 ms/frame, YOLO 49–62, RTMPose-t 153–213, RTMPose-m 1200–4600 (unusable). Combined MediaPipe pose + 2 hand crops ≈ **104 ms/frame ≈ 9.7 FPS**.
-  - Hands on wrist crops: rock/ILY/two-finger 100% detection; `ok` misses only during entry/exit motion blur.
+- **Evidence for the choice** — full report `results/phase1/backbone_report.docx` (numbers + montages), summary `docs/phase1_report.md`, reproduce with `scripts/phase1_eval.py` + `scripts/phase1_report.py`. Benchmarked MediaPipe vs YOLO11n/s-pose vs RTMPose-t/m (rtmlib/ONNX) on the posture + overlapping-finger hard cases, CPU and GPU (RTX 3050 as proxy for the Acer laptop).
+  - VRAM (the binding constraint — shared GPU, CLAUDE.md): MediaPipe 0 (CPU). YOLO11n 70 MB / YOLO11s 130 MB / RTMPose-t 359 MB / RTMPose-m 611 MB on CUDA, plus a torch or onnxruntime-gpu runtime.
+  - Keypoint stability: MediaPipe cleanest on `squat`/`sit`, single-person so it never grabs the bystander; YOLO threw flyaway head keypoints and picked the bystander; RTMPose's detector also picked the bystander (RTMPose-m had the best skeleton otherwise).
+  - Latency squat, ms/frame: MediaPipe 38 CPU (no GPU delegate exists for the pip wheel). YOLO11n 119 CPU / 24 GPU. YOLO11s 198 / 21. RTMPose-t 167 / 37. RTMPose-m 356 / 83.
+  - Combined MediaPipe pose + 2 hand crops ≈ **116 ms/frame ≈ 8.6 FPS** (CPU; GPU pass identical).
+  - Hands on wrist crops: rock/ILY/two-finger 100% detection; `ok` 78% (misses only during entry/exit motion blur).
 - **2D only** (RGB camera, no depth).
 - **Open items** (Phase 1 not fully signed off): no clean `laying` clip exists yet to test the low-camera-angle case; latency needs confirming on the Acer laptop with an agreed real-time budget.
 - Any change to backbone version/config invalidates every extracted feature file and the classifier — re-extract and retrain (see "Versioning note").

@@ -1,43 +1,63 @@
-"""Phase 1 backbone sanity check (IMPLEMENTATION_PLAN.md Phase 1).
+"""Phase 1 backbone benchmark (IMPLEMENTATION_PLAN.md Phase 1).
 
-Runs the candidate body-pose backbones on the project's hard cases and
-MediaPipe Hands on the overlapping-finger hand shapes, saves annotated
-montages for visual review, and measures latency on THIS machine (used as a
-proxy for the Ubuntu deploy laptop - see the note in the report).
+Runs the candidate body-pose backbones (+ MediaPipe Hands) on the project's
+hard-case clips, on CPU and on GPU, and records detailed numbers +
+annotated output for review. Feeds scripts/phase1_report.py (the .docx).
 
-    python scripts/phase1_eval.py --out scratch/phase1
+    python scripts/phase1_eval.py --device cpu
+    python scripts/phase1_eval.py --device gpu
+    python scripts/phase1_eval.py --device gpu --annotate      # also write annotated mp4s
 
-Hard cases (from data/clips/, subject at ~2-4 m in the footage):
-  posture : laying_01, squat_01, sit_02
-  hands   : rock_01, ok_01, i_love_you_01, two_finger_01
+Writes:
+    results/phase1/metrics_<device>.json
+    results/phase1/montages/<model>__<clip>.jpg
+    results/phase1/annotated/<model>__<clip>.mp4         (with --annotate)
+
+Latency is measured on THIS machine. The deploy laptop will differ - the
+*ranking* and the VRAM figures are the durable results.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
+import platform
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-import cv2
-import numpy as np
-from PIL import Image, ImageDraw
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+# onnxruntime-gpu needs the CUDA 12 / cuDNN 9 DLLs on the path; the torch cu124
+# wheel bundles them. Register that dir before importing anything CUDA.
+_torch_lib = ROOT / ".venv" / "Lib" / "site-packages" / "torch" / "lib"
+if _torch_lib.is_dir():
+    os.add_dll_directory(str(_torch_lib))
+    os.environ["PATH"] = str(_torch_lib) + os.pathsep + os.environ.get("PATH", "")
+
+import cv2  # noqa: E402
+import numpy as np  # noqa: E402
+from PIL import Image  # noqa: E402
+
+GPU_BASELINE_MB = None  # set in main() before any model loads
 CLIPS = ROOT / "data" / "clips"
+OUT = ROOT / "results" / "phase1"
 
 POSTURE = {
     "laying": CLIPS / "laying" / "laying_01.mp4",
     "squat": CLIPS / "squat" / "squat_01.mp4",
     "sit": CLIPS / "sit" / "sit_02.mp4",
 }
-HANDS = {
+HAND_CLIPS = {
     "rock": CLIPS / "rock" / "rock_01.mp4",
     "ok": CLIPS / "ok" / "ok_01.mp4",
     "i_love_you": CLIPS / "i_love_you" / "i_love_you_01.mp4",
     "two_finger": CLIPS / "two_finger" / "two_finger_01.mp4",
 }
+COMBINED_CLIP = POSTURE["squat"]
 
 COCO_EDGES = [
     (5, 6), (5, 7), (7, 9), (6, 8), (8, 10), (5, 11), (6, 12), (11, 12),
@@ -45,27 +65,36 @@ COCO_EDGES = [
 ]
 
 
-def sample_frames(path: Path, n: int = 8) -> list[np.ndarray]:
+# ---------- helpers ----------
+def gpu_mem_used_mb() -> float | None:
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.used", "--format=csv,noheader,nounits"],
+            text=True,
+        )
+        return float(out.strip().splitlines()[0])
+    except Exception:
+        return None
+
+
+def read_all(path: Path) -> list[np.ndarray]:
     cap = cv2.VideoCapture(str(path))
-    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    idxs = np.linspace(0, max(0, total - 1), n).astype(int)
-    out = []
-    for i in idxs:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, int(i))
+    frames = []
+    while True:
         ok, f = cap.read()
-        if ok:
-            out.append(f)
+        if not ok:
+            break
+        frames.append(f)
     cap.release()
-    return out
+    return frames
 
 
-def draw_skeleton(frame, xy, edges, conf=None, thr=0.3):
+def draw(frame, xy, edges, conf=None, thr=0.3):
     f = frame.copy()
     for i, j in edges:
         if conf is not None and (conf[i] < thr or conf[j] < thr):
             continue
-        p, q = xy[i].astype(int), xy[j].astype(int)
-        cv2.line(f, tuple(p), tuple(q), (0, 255, 0), 3)
+        cv2.line(f, tuple(xy[i].astype(int)), tuple(xy[j].astype(int)), (0, 255, 0), 3)
     for k, (x, y) in enumerate(xy):
         if conf is not None and conf[k] < thr:
             continue
@@ -73,52 +102,85 @@ def draw_skeleton(frame, xy, edges, conf=None, thr=0.3):
     return f
 
 
-# ---------------- pose backends ----------------
+def montage(tiles, path: Path, cols=8):
+    if not tiles:
+        return
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tw = 260
+    th = int(tw * tiles[0].shape[0] / tiles[0].shape[1])
+    rows = (len(tiles) + cols - 1) // cols
+    sheet = Image.new("RGB", (cols * tw, rows * th), "black")
+    for i, t in enumerate(tiles):
+        im = Image.fromarray(cv2.cvtColor(t, cv2.COLOR_BGR2RGB)).resize((tw, th))
+        sheet.paste(im, ((i % cols) * tw, (i // cols) * th))
+    sheet.save(path, quality=85)
+
+
+def timed(fn, frames, warm=5):
+    for f in frames[:warm]:
+        fn(f)
+    per = []
+    for f in frames:
+        t0 = time.perf_counter()
+        fn(f)
+        per.append((time.perf_counter() - t0) * 1000)
+    a = np.array(per)
+    return {"ms_mean": float(a.mean()), "ms_p50": float(np.percentile(a, 50)),
+            "ms_p90": float(np.percentile(a, 90)), "fps": float(1000 / a.mean()), "n": len(a)}
+
+
+# ---------- pose backends ----------
 class MPPose:
-    name = "mediapipe"
+    key = "mediapipe_pose"
+    fmt = "mp33"
 
-    def __init__(self):
+    def __init__(self, device):
         from backbone.pose import PoseEstimator
-
         self.est = PoseEstimator("mediapipe")
         self.edges = self.est.edges
+        self.device_actual = "cpu"  # mediapipe python wheel is CPU-only
 
     def infer(self, frame):
         kp = self.est.estimate(frame)
-        if kp is None:
-            return None, None
-        return kp.xy, kp.visibility
+        return (None, None) if kp is None else (kp.xy, kp.visibility)
 
 
 class YoloPose:
-    name = "yolo11n-pose"
-
-    def __init__(self):
+    def __init__(self, device, weights="yolo11n-pose.pt"):
         from ultralytics import YOLO
-
-        self.m = YOLO("yolo11n-pose.pt")
+        import torch
+        self.key = f"{Path(weights).stem}"
         self.edges = COCO_EDGES
+        self.fmt = "coco17"
+        self.dev = "cuda:0" if (device == "gpu" and torch.cuda.is_available()) else "cpu"
+        self.device_actual = "cuda" if self.dev.startswith("cuda") else "cpu"
+        self.m = YOLO(weights)
+        self.m.to(self.dev)
 
     def infer(self, frame):
-        r = self.m(frame, verbose=False, conf=0.3)[0]
+        r = self.m(frame, verbose=False, conf=0.3, device=self.dev)[0]
         if r.keypoints is None or r.keypoints.xy.shape[0] == 0:
             return None, None
         xy = r.keypoints.xy[0].cpu().numpy()
         cf = r.keypoints.conf
         cf = cf[0].cpu().numpy() if cf is not None else np.ones(len(xy))
-        if xy.shape[0] == 0:
-            return None, None
-        return xy, cf
+        return (None, None) if xy.shape[0] == 0 else (xy, cf)
 
 
 class RtmPose:
-    name = "rtmpose-t (rtmlib lite)"
-
-    def __init__(self):
+    def __init__(self, device, mode="lightweight"):
         from rtmlib import Body
-
-        self.m = Body(mode="lightweight", backend="onnxruntime", device="cpu")
+        self.key = f"rtmpose_{mode}"
         self.edges = COCO_EDGES
+        self.fmt = "coco17"
+        want = "cuda" if device == "gpu" else "cpu"
+        try:
+            import onnxruntime as ort
+            has_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
+        except Exception:
+            has_cuda = False
+        self.device_actual = "cuda" if (want == "cuda" and has_cuda) else "cpu"
+        self.m = Body(mode=mode, backend="onnxruntime", device=self.device_actual)
 
     def infer(self, frame):
         kpts, scores = self.m(frame)
@@ -127,138 +189,192 @@ class RtmPose:
         return np.asarray(kpts[0]), np.asarray(scores[0])
 
 
-def eval_posture(backends, out: Path, warm=3):
-    rows = []
-    for be in backends:
-        for cls, path in POSTURE.items():
-            if not path.exists():
-                print(f"  missing {path}")
-                continue
-            frames = sample_frames(path, 8)
-            for _ in range(warm):
-                be.infer(frames[0])
-            t0 = time.perf_counter()
-            results = [be.infer(f) for f in frames]
-            ms = (time.perf_counter() - t0) / len(frames) * 1000
-            hit = sum(1 for xy, _ in results if xy is not None)
-            tiles = [
-                draw_skeleton(fr, xy, be.edges, cf) if xy is not None else fr
-                for fr, (xy, cf) in zip(frames, results)
-            ]
-            _montage(tiles, out / f"posture_{cls}_{be.name.split()[0]}.jpg")
-            rows.append((be.name, cls, f"{hit}/{len(frames)}", f"{ms:.0f} ms/frame"))
-    return rows
+POSE_SPECS = [
+    (MPPose, {}),
+    (YoloPose, {"weights": "yolo11n-pose.pt"}),
+    (YoloPose, {"weights": "yolo11s-pose.pt"}),
+    (RtmPose, {"mode": "lightweight"}),
+    (RtmPose, {"mode": "balanced"}),
+]
 
 
-def eval_hands(out: Path, warm=3):
+def probe_vram(be) -> dict:
+    """VRAM the loaded model occupies. torch models: exact via torch stats.
+    onnxruntime models: nvidia-smi delta vs the baseline captured at import."""
+    if be.device_actual != "cuda":
+        return {"method": "n/a (CPU)", "model_mb": 0.0}
+    try:
+        import torch
+        if torch.cuda.is_available() and hasattr(be, "m") and "ultralytics" in type(be.m).__module__:
+            return {"method": "torch.max_memory_allocated",
+                    "model_mb": round(torch.cuda.max_memory_allocated() / 1e6, 1)}
+    except Exception:
+        pass
+    cur = gpu_mem_used_mb()
+    return {"method": "nvidia-smi delta", "model_mb": None if cur is None else round(cur - GPU_BASELINE_MB, 1)}
+
+
+# ---------- eval passes ----------
+TIMING_FRAMES = 40  # cap per clip so RTMPose-m CPU doesn't take 15 min
+
+
+def eval_posture(be, device, annotate):
+    res = {}
+    for cls, path in POSTURE.items():
+        if not path.exists():
+            continue
+        allf = read_all(path)
+        sub = max(1, len(allf) // TIMING_FRAMES)
+        frames = allf[::sub][:TIMING_FRAMES]
+        stats = timed(be.infer, frames)
+        results = [be.infer(f) for f in frames]
+        hit = sum(1 for xy, _ in results if xy is not None)
+        mstep = max(1, len(frames) // 8)
+        tiles = [draw(fr, xy, be.edges, cf) if xy is not None else fr
+                 for fr, (xy, cf) in list(zip(frames, results))[::mstep][:8]]
+        montage(tiles, OUT / "montages" / f"{be.key}__{cls}__{device}.jpg")
+        if annotate and be.key in ("mediapipe_pose", "yolo11n-pose", "rtmpose_lightweight"):
+            af = read_all(path)
+            ar = [be.infer(f) for f in af]
+            _write_video(af, ar, be.edges, OUT / "annotated" / f"{be.key}__{cls}.mp4")
+        res[cls] = {**stats, "detect_rate": f"{hit}/{len(frames)}",
+                    "detect_pct": round(100 * hit / len(frames), 1)}
+    return res
+
+
+def _write_video(frames, results, edges, path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    h, w = frames[0].shape[:2]
+    vw = cv2.VideoWriter(str(path), cv2.VideoWriter_fourcc(*"mp4v"), 20, (w, h))
+    for fr, (xy, cf) in zip(frames, results):
+        vw.write(draw(fr, xy, edges, cf) if xy is not None else fr)
+    vw.release()
+
+
+def eval_hands(device, annotate):
     from backbone.hands import HandLandmarker, wrist_crop_box
     from backbone.pose import PoseEstimator
     from smoke_test import HAND_EDGES
-
     pose = PoseEstimator("mediapipe")
     hands = HandLandmarker()
-    rows = []
-    for cls, path in HANDS.items():
+    res = {}
+    for cls, path in HAND_CLIPS.items():
         if not path.exists():
             continue
-        frames = sample_frames(path, 8)
-        crops, drawn, hit, times = [], [], 0, []
+        frames = read_all(path)
+        hit, tot, times, tiles = 0, 0, [], []
         for fr in frames:
             kp = pose.estimate(fr)
             if kp is None:
                 continue
-            wrist = kp.left_wrist if kp.left_wrist[1] < kp.right_wrist[1] else kp.right_wrist
-            x0, y0, x1, y1 = wrist_crop_box(wrist, kp.shoulder_width or 90, fr.shape)
+            w = kp.left_wrist if kp.left_wrist[1] < kp.right_wrist[1] else kp.right_wrist
+            x0, y0, x1, y1 = wrist_crop_box(w, kp.shoulder_width or 90, fr.shape)
             crop = fr[y0:y1, x0:x1]
             if crop.size == 0:
                 continue
+            tot += 1
             t0 = time.perf_counter()
             lm = hands.detect(crop)
             times.append((time.perf_counter() - t0) * 1000)
-            c = cv2.resize(crop, (200, 200))
             if lm is not None:
                 hit += 1
-                s = np.array([200 / crop.shape[1], 200 / crop.shape[0]])
-                lm2 = lm * s
-                for a, b in HAND_EDGES:
-                    cv2.line(c, tuple(lm2[a].astype(int)), tuple(lm2[b].astype(int)), (255, 0, 255), 1)
-                for x, y in lm2:
-                    cv2.circle(c, (int(x), int(y)), 2, (0, 255, 255), -1)
-            drawn.append(c)
-        _montage(drawn, out / f"hands_{cls}.jpg", cols=len(drawn) or 1)
-        rows.append((cls, f"{hit}/{len(drawn)}", f"{np.mean(times):.0f} ms/crop" if times else "-"))
-    return rows
+        res[cls] = {"detect_rate": f"{hit}/{tot}", "detect_pct": round(100 * hit / max(1, tot), 1),
+                    "ms_mean": round(float(np.mean(times)), 1) if times else None}
+    return res
 
 
-def eval_combined_latency(clip=POSTURE["squat"], warm=5):
+def eval_combined(device):
     from backbone.hands import HandLandmarker, wrist_crop_box
     from backbone.pose import PoseEstimator
-
     pose = PoseEstimator("mediapipe")
     hands = HandLandmarker()
-    cap = cv2.VideoCapture(str(clip))
-    frames = []
-    while True:
-        ok, f = cap.read()
-        if not ok:
-            break
-        frames.append(f)
-    cap.release()
-    for f in frames[:warm]:
-        pose.estimate(f)
-    t0 = time.perf_counter()
-    for f in frames:
+    frames = read_all(COMBINED_CLIP)
+
+    def step(f):
         kp = pose.estimate(f)
         if kp is None:
-            continue
-        for wrist in (kp.left_wrist, kp.right_wrist):
-            x0, y0, x1, y1 = wrist_crop_box(wrist, kp.shoulder_width or 90, f.shape)
+            return
+        for wr in (kp.left_wrist, kp.right_wrist):
+            x0, y0, x1, y1 = wrist_crop_box(wr, kp.shoulder_width or 90, f.shape)
             c = f[y0:y1, x0:x1]
             if c.size:
                 hands.detect(c)
-    dt = (time.perf_counter() - t0) / len(frames)
-    return dt * 1000, 1.0 / dt, len(frames)
 
-
-def _montage(tiles, path: Path, cols=8):
-    if not tiles:
-        return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    h = max(t.shape[0] for t in tiles)
-    w = max(t.shape[1] for t in tiles)
-    rows = (len(tiles) + cols - 1) // cols
-    sheet = Image.new("RGB", (cols * (w // 3), rows * (h // 3)), "black")
-    for i, t in enumerate(tiles):
-        im = Image.fromarray(cv2.cvtColor(t, cv2.COLOR_BGR2RGB)).resize((w // 3, h // 3))
-        sheet.paste(im, ((i % cols) * (w // 3), (i // cols) * (h // 3)))
-    sheet.save(path, quality=85)
+    return {**timed(step, frames), "note": "MediaPipe pose + 2 hand crops per frame (CPU)"}
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--out", default="scratch/phase1")
+    ap.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
+    ap.add_argument("--annotate", action="store_true")
     args = ap.parse_args()
-    out = Path(args.out)
+    OUT.mkdir(parents=True, exist_ok=True)
 
-    backends = []
-    for cls in (MPPose, YoloPose, RtmPose):
+    global GPU_BASELINE_MB
+    GPU_BASELINE_MB = gpu_mem_used_mb()
+    try:
+        import torch
+        gpu_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else None
+    except Exception:
+        gpu_name = None
+
+    report = {
+        "device_requested": args.device,
+        "host": {"platform": platform.platform(), "python": platform.python_version(),
+                 "gpu": gpu_name, "gpu_mem_total_mb": _gpu_total(),
+                 "gpu_mem_baseline_mb": GPU_BASELINE_MB},
+        "pose": {}, "hands": {}, "combined_mediapipe": {},
+    }
+
+    print(f"\n### device={args.device} ###  (GPU baseline {GPU_BASELINE_MB} MB)")
+    for cls, kw in POSE_SPECS:
         try:
-            backends.append(cls())
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.reset_peak_memory_stats()
+        except Exception:
+            pass
+        t_init = time.perf_counter()
+        try:
+            be = cls(args.device, **kw)
         except Exception as e:  # noqa: BLE001
-            print(f"skip {cls.__name__}: {e}")
+            print(f"  skip {cls.__name__} {kw}: {e}")
+            continue
+        init_s = round(time.perf_counter() - t_init, 2)
+        print(f"  {be.key} (actual: {be.device_actual}, init {init_s}s)")
+        clips = eval_posture(be, args.device, args.annotate)
+        report["pose"][be.key] = {"device_actual": be.device_actual, "format": be.fmt,
+                                  "init_s": init_s, "vram": probe_vram(be), "clips": clips}
+        del be
 
-    print("\n=== posture: keypoint plausibility + latency ===")
-    for r in eval_posture(backends, out):
-        print(f"  {r[0]:22s} {r[1]:8s} detect {r[2]:8s} {r[3]}")
+    report["hands"] = {"model": "mediapipe_hands", "device_actual": "cpu",
+                       "clips": eval_hands(args.device, args.annotate)}
+    report["combined_mediapipe"] = eval_combined(args.device)
 
-    print("\n=== hands (MediaPipe Hands on wrist crops) ===")
-    for r in eval_hands(out):
-        print(f"  {r[0]:12s} detect {r[1]:8s} {r[2]}")
+    path = OUT / f"metrics_{args.device}.json"
+    path.write_text(json.dumps(report, indent=2))
+    print(f"\n-> {path}")
+    _print_summary(report)
 
-    ms, fps, n = eval_combined_latency()
-    print(f"\n=== combined MediaPipe pose+2 hand crops (n={n}) ===")
-    print(f"  {ms:.0f} ms/frame  ->  {fps:.1f} FPS  (this machine, CPU)")
-    print(f"\nmontages -> {out}/")
+
+def _gpu_total():
+    try:
+        out = subprocess.check_output(
+            ["nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits"], text=True)
+        return float(out.strip().splitlines()[0])
+    except Exception:
+        return None
+
+
+def _print_summary(r):
+    print("\n  pose backbone         actual  squat ms/f   fps    detect%   VRAM MB")
+    for k, v in r["pose"].items():
+        s = v["clips"].get("squat", {})
+        print(f"  {k:20s} {v['device_actual']:6s} {s.get('ms_mean', 0):8.1f}  {s.get('fps', 0):6.1f}   "
+              f"{s.get('detect_pct', 0):5.1f}   {(v.get('vram') or {}).get('model_mb')}")
+    c = r["combined_mediapipe"]
+    print(f"\n  combined MediaPipe: {c['ms_mean']:.1f} ms/frame -> {c['fps']:.1f} FPS")
 
 
 if __name__ == "__main__":

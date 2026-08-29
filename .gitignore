@@ -20,3 +20,8 @@ __pycache__/
 # misc
 .DS_Store
 /scratch/
+
+# phase 1 benchmark: keep the .docx report + metrics json; montages are embedded
+# in the .docx and the annotated videos are large — regenerate both with the scripts
+/results/phase1/annotated/
+/results/phase1/montages/

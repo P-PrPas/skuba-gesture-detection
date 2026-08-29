@@ -1,0 +1,236 @@
+{
+  "device_requested": "gpu",
+  "host": {
+    "platform": "Windows-10-10.0.26200-SP0",
+    "python": "3.11.15",
+    "gpu": "NVIDIA GeForce RTX 3050 Laptop GPU",
+    "gpu_mem_total_mb": 4096.0,
+    "gpu_mem_baseline_mb": 0.0
+  },
+  "pose": {
+    "mediapipe_pose": {
+      "device_actual": "cpu",
+      "format": "mp33",
+      "init_s": 1.82,
+      "vram": {
+        "method": "n/a (CPU)",
+        "model_mb": 0.0
+      },
+      "clips": {
+        "laying": {
+          "ms_mean": 45.53924999854644,
+          "ms_p50": 44.59660001157317,
+          "ms_p90": 53.04147999268025,
+          "fps": 21.959079256507714,
+          "n": 40,
+          "detect_rate": "37/40",
+          "detect_pct": 92.5
+        },
+        "squat": {
+          "ms_mean": 37.08185000141384,
+          "ms_p50": 35.19929999310989,
+          "ms_p90": 44.48386000003666,
+          "fps": 26.967370828636447,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 37.23452999765868,
+          "ms_p50": 35.536850002245046,
+          "ms_p90": 44.27360999688972,
+          "fps": 26.856791265067137,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "yolo11n-pose": {
+      "device_actual": "cuda",
+      "format": "coco17",
+      "init_s": 2.11,
+      "vram": {
+        "method": "torch.max_memory_allocated",
+        "model_mb": 70.3
+      },
+      "clips": {
+        "laying": {
+          "ms_mean": 28.49241250078194,
+          "ms_p50": 26.41054999548942,
+          "ms_p90": 39.78465001855511,
+          "fps": 35.097063120666114,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 23.636915001407033,
+          "ms_p50": 23.722450001514517,
+          "ms_p90": 29.606639989651743,
+          "fps": 42.30670541991089,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 24.972757501382148,
+          "ms_p50": 23.213450011098757,
+          "ms_p90": 35.200709995115176,
+          "fps": 40.0436355474422,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "yolo11s-pose": {
+      "device_actual": "cuda",
+      "format": "coco17",
+      "init_s": 0.23,
+      "vram": {
+        "method": "torch.max_memory_allocated",
+        "model_mb": 130.0
+      },
+      "clips": {
+        "laying": {
+          "ms_mean": 46.343427501415135,
+          "ms_p50": 47.72070000763051,
+          "ms_p90": 56.65230998711195,
+          "fps": 21.57803282826813,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 21.239595000224654,
+          "ms_p50": 20.189349990687333,
+          "ms_p90": 25.94805999542587,
+          "fps": 47.081877031526396,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 24.791324995749164,
+          "ms_p50": 24.640449992148206,
+          "ms_p90": 35.37109000899363,
+          "fps": 40.33669036130439,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "rtmpose_lightweight": {
+      "device_actual": "cuda",
+      "format": "coco17",
+      "init_s": 0.73,
+      "vram": {
+        "method": "nvidia-smi delta",
+        "model_mb": 359.0
+      },
+      "clips": {
+        "laying": {
+          "ms_mean": 60.35214499643189,
+          "ms_p50": 58.375799999339506,
+          "ms_p90": 77.62207999185193,
+          "fps": 16.569419364616145,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 36.8122974949074,
+          "ms_p50": 37.04470000229776,
+          "ms_p90": 47.05346000264399,
+          "fps": 27.16483534173165,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 31.367305002640933,
+          "ms_p50": 28.68375000252854,
+          "ms_p90": 37.80887998873368,
+          "fps": 31.880328893916968,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "rtmpose_balanced": {
+      "device_actual": "cuda",
+      "format": "coco17",
+      "init_s": 0.32,
+      "vram": {
+        "method": "nvidia-smi delta",
+        "model_mb": 611.0
+      },
+      "clips": {
+        "laying": {
+          "ms_mean": 65.24980749818496,
+          "ms_p50": 62.256449993583374,
+          "ms_p90": 77.27168999263085,
+          "fps": 15.325715712307913,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 83.45360999883269,
+          "ms_p50": 83.6997500009602,
+          "ms_p90": 99.27540000644514,
+          "fps": 11.982705122210861,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 79.47655500465771,
+          "ms_p50": 76.17385000048671,
+          "ms_p90": 103.64428999600932,
+          "fps": 12.58232695090263,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    }
+  },
+  "hands": {
+    "model": "mediapipe_hands",
+    "device_actual": "cpu",
+    "clips": {
+      "rock": {
+        "detect_rate": "102/102",
+        "detect_pct": 100.0,
+        "ms_mean": 42.5
+      },
+      "ok": {
+        "detect_rate": "35/45",
+        "detect_pct": 77.8,
+        "ms_mean": 45.5
+      },
+      "i_love_you": {
+        "detect_rate": "141/141",
+        "detect_pct": 100.0,
+        "ms_mean": 42.1
+      },
+      "two_finger": {
+        "detect_rate": "87/87",
+        "detect_pct": 100.0,
+        "ms_mean": 42.8
+      }
+    }
+  },
+  "combined_mediapipe": {
+    "ms_mean": 120.37842777580308,
+    "ms_p50": 117.34914999397006,
+    "ms_p90": 144.60527000483125,
+    "fps": 8.30713624090883,
+    "n": 108,
+    "note": "MediaPipe pose + 2 hand crops per frame (CPU)"
+  }
+}

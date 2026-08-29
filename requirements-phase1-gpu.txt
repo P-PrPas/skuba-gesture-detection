@@ -1,0 +1,16 @@
+# Phase 1 backbone GPU benchmark ONLY - not needed by the production pipeline
+# (the pipeline runs MediaPipe on CPU). Install into the same .venv when you
+# want to reproduce the GPU numbers in docs/phase1_report / backbone_report.docx.
+#
+#   pip install -r requirements-phase1-gpu.txt \
+#       --trusted-host download.pytorch.org --index-url https://download.pytorch.org/whl/cu124 \
+#       --extra-index-url https://pypi.org/simple
+#   pip install python-docx --trusted-host pypi.org --trusted-host files.pythonhosted.org
+#
+# onnxruntime-gpu additionally needs CUDA 12 + cuDNN 9 DLLs on PATH; the torch
+# cu124 install below bundles them under .venv/Lib/site-packages/nvidia/*/bin.
+
+torch                  # cu124 build via --index-url
+torchvision            #   "
+onnxruntime-gpu==1.22.0
+python-docx==1.1.2
