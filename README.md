@@ -12,7 +12,10 @@ feature vector decides the class (or `idle`). See `docs/` for the full picture:
 ## Status
 
 - **Phase 0** ✅ environment, backbone wrappers, smoke test.
-- **Phase 1** ✅ backbone locked: **MediaPipe Pose + Hands** (CPU, 0 VRAM — deployment target is a shared-VRAM laptop). See `docs/ARCHITECTURE.md` "Tech stack".
+- **Phase 1** 🟡 MediaPipe Pose + Hands chosen — beat YOLO11n-pose & RTMPose on
+  keypoint stability, VRAM (CPU-only), and latency on the hard cases
+  (`docs/phase1_report.md`, `scripts/phase1_eval.py`). Open: no clean `laying`
+  clip to test yet; latency (~10 FPS CPU combined) needs confirming on the Acer.
 - **Phase 2** 🟡 extraction + augmentation pipeline done and run. Dataset built from
   `data/main.MOV` (1 subject, 1 session → **1323 frames, 16 clips, 14 classes**).
   Exit criterion **NOT met**: needs ≥3 subjects for a valid subject-wise
