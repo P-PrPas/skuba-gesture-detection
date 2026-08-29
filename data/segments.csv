@@ -1,17 +1,17 @@
-clip_id,class,start_s,end_s,confidence,notes
-idle_01,idle,0.0,2.0,high,standing still before first gesture
-raise_right_hand_01,raise_right_hand,2.2,5.4,high,person's right arm (viewer-left in frame) raised and held; subject faces camera
-raise_left_hand_01,raise_left_hand,5.9,7.4,medium,person's left arm (viewer-right) raised; short hold (~1.5s)
-ok_01,ok,13.1,14.6,high,thumb+index circle other three fingers up; right hand near head
-two_finger_01,two_finger,16.1,19.0,high,index+middle V (peace); right hand
-i_love_you_01,i_love_you,20.5,25.2,medium,index+pinky+thumb all extended (ILY); right hand. ILY vs rock boundary near t=25 approximate
-rock_01,rock,25.6,29.0,medium,index+pinky up thumb folded; right hand. verify against i_love_you_01 - handshapes are close on this take
-heart_01,heart,31.0,32.0,medium,big two-arm heart arced above the head (1st occurrence). short (~1s)
-mini_heart_01,mini_heart,32.0,33.5,medium,"hands together just above the head making a small heart (~t=33, per your note)"
-t_pose_01,t_pose,34.5,35.7,medium,arms straight out to the sides horizontal
-heart_02,heart,44.7,46.5,medium,big two-arm heart above the head (2nd occurrence). cleaner/longer than heart_01 - this is AFTER glico so drop it if you only want the pre-glico take
-glico_pose_01,glico_pose,38.0,40.2,medium,"Glico / running-man pose: arms up, knee up. the apparent 'jump' is just a leg switch - confirmed OK"
-squat_01,squat,53.6,57.2,medium,deep crouch hands toward floor; lower body partly occluded by the robot
-laying_01,laying,57.2,60.3,medium,"first ~1.5s is the squat->floor transition; actual lying-back is ~t=59.3-60.3"
-sit_01,sit,61.0,65.6,medium,trimmed start per your note (was lying then sat up). seated upright on the robot platform feet on floor
-sit_02,sit,65.6,71.5,medium,was review_05. trimmed the stand-up at the tail (~t=71.5+)
+clip_id,subject_id,session_id,source_video,class,start_s,end_s,confidence,notes
+idle_01,s01,s01_main,main.MOV,idle,0.0,2.0,high,standing still before first gesture
+raise_right_hand_01,s01,s01_main,main.MOV,raise_right_hand,2.2,5.4,high,person's right arm (viewer-left in frame) raised and held; subject faces camera
+raise_left_hand_01,s01,s01_main,main.MOV,raise_left_hand,5.9,7.4,medium,person's left arm (viewer-right) raised; short hold (~1.5s)
+ok_01,s01,s01_main,main.MOV,ok,13.1,14.6,high,thumb+index circle other three fingers up; right hand near head
+two_finger_01,s01,s01_main,main.MOV,two_finger,16.1,19.0,high,index+middle V (peace); right hand
+i_love_you_01,s01,s01_main,main.MOV,i_love_you,20.5,25.2,medium,index+pinky+thumb all extended (ILY); right hand. ILY vs rock boundary near t=25 approximate
+rock_01,s01,s01_main,main.MOV,rock,25.6,29.0,medium,index+pinky up thumb folded; right hand. verify against i_love_you_01 - handshapes are close on this take
+heart_01,s01,s01_main,main.MOV,heart,31.0,32.0,medium,big two-arm heart arced above the head (1st occurrence). short (~1s)
+mini_heart_01,s01,s01_main,main.MOV,mini_heart,32.0,33.5,medium,"hands together just above the head making a small heart (~t=33, per your note)"
+t_pose_01,s01,s01_main,main.MOV,t_pose,34.5,35.7,medium,arms straight out to the sides horizontal
+heart_02,s01,s01_main,main.MOV,heart,44.7,46.5,medium,big two-arm heart above the head (2nd occurrence). cleaner/longer than heart_01
+glico_pose_01,s01,s01_main,main.MOV,glico_pose,38.0,40.2,medium,"Glico / running-man pose: arms up, knee up. the apparent 'jump' is just a leg switch - confirmed OK"
+squat_01,s01,s01_main,main.MOV,squat,53.6,57.2,medium,deep crouch hands toward floor; lower body partly occluded by the robot
+laying_01,s01,s01_main,main.MOV,laying,57.2,60.3,medium,"first ~1.5s is the squat->floor transition; actual lying-back is ~t=59.3-60.3"
+sit_01,s01,s01_main,main.MOV,sit,61.0,65.6,medium,trimmed start per your note (was lying then sat up). seated upright on the robot platform feet on floor
+sit_02,s01,s01_main,main.MOV,sit,65.6,71.5,medium,was review_05. trimmed the stand-up at the tail (~t=71.5+)

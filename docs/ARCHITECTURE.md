@@ -2,11 +2,28 @@
 
 Companion to CLAUDE.md. This is where the concrete schemas and formulas live so the classification-layer experiments (Phase 4) have a stable contract to work against.
 
+## Tech stack (locked at Phase 1)
+
+- **Body pose:** MediaPipe Pose, 33 landmarks, `model_complexity=1`.
+- **Hand landmarks:** MediaPipe Hands, 21 landmarks/hand, `static_image_mode=True`, run on wrist-anchored crops.
+- **Evidence for the choice:** the deployment target is an Ubuntu laptop whose VRAM is shared across several robot modules (see CLAUDE.md). MediaPipe runs entirely on CPU (0 VRAM); YOLO-pose needs torch + GPU. On the project's own footage (`data/main.MOV`) MediaPipe Pose tracked the subject on every frame of all 16 labelled clips including the occluded floor poses (0 dropped frames — see `data/features/_extract_summary.json`), and YOLO-pose's naive "first person" selection latched onto a background bystander. 2D only (RGB camera, no depth).
+- Any change to backbone version/config invalidates every extracted feature file and the classifier — re-extract and retrain (see "Versioning note").
+
 ## Feature vector schema
 
-The classifier's input is a single fixed-length vector per frame, built by concatenating:
+Implemented in `features/schema.py` (`FEATURE_DIM = 152`). The classifier's input is a single fixed-length vector per frame:
 
-1. **Body features** — normalized (x, y) [or (x, y, z) if using a 3D-capable backbone] for each body keypoint, in a fixed, documented order.
+| slice | content |
+|---|---|
+| `[0:66]` | 33 body landmarks, normalized (x, y), MediaPipe Pose order |
+| `[66:108]` | 21 left-hand landmarks, normalized (x, y) |
+| `[108]` | left-hand presence flag (1 detected / 0 not) |
+| `[109:151]` | 21 right-hand landmarks, normalized (x, y) |
+| `[151]` | right-hand presence flag |
+
+Built by concatenating:
+
+1. **Body features** — normalized (x, y) for each body keypoint, in MediaPipe's fixed landmark order.
 2. **Left hand features** — normalized (x, y) for each of the 21 hand landmarks, plus a **presence flag** (1 if detected this frame, 0 if not).
 3. **Right hand features** — same as left, mirrored.
 
@@ -29,14 +46,24 @@ Do not run the hand landmark model on the full frame. Instead:
 3. Run the hand landmark model on each crop independently.
 4. Map landmark coordinates back to a hand-local normalized frame (see Normalization above) — they do not need to be re-projected into the original frame's coordinates, since the classifier only ever sees normalized features.
 
-## Augmentation recipe (starting parameters — tune in Phase 4)
+## Augmentation recipe
 
-- **Mirror**: flip x-coordinates of body and both hands; swap left/right hand feature slices; relabel any class with a left/right variant (e.g. `raise_right_hand` -> `raise_left_hand`). Classes without a left/right variant (e.g. `sit`) keep their label.
-- **Rotation jitter**: rotate keypoints by a small random angle around the body center, to simulate camera tilt and imperfect posture.
-- **Keypoint dropout**: randomly zero out a small fraction of keypoints (with their own presence-style handling if applicable) to simulate partial occlusion.
-- **Coordinate noise**: add small Gaussian noise to coordinates, to simulate backbone jitter.
+Implemented in `features/augment.py` (`AugParams`). Applied to the **train split only**; originals are kept. Current starting values (tune in Phase 4, then update here and the dataset card):
 
-Document the exact ranges/probabilities used once tuned — they affect reproducibility of every downstream result.
+| step | parameter | value |
+|---|---|---|
+| Mirror | `mirror_p` | 0.5 |
+| Rotation jitter | `rot_deg` (max \|tilt\|) | 12° |
+| Keypoint dropout | `kp_dropout_frac` | 0.05 |
+| Whole-hand drop | `hand_drop_p` | 0.10 |
+| Coordinate noise | `coord_noise_std` (normalized units) | 0.02 |
+| Copies per original | `n_per_sample` | 4 |
+
+- **Mirror**: flip x-coordinates of body and both hands; swap left/right body landmark pairs; swap the left/right hand feature slices **and** their presence flags; relabel any class with a left/right variant (`raise_right_hand` <-> `raise_left_hand`). Classes without a left/right variant keep their label. `features/augment.py::demo()` asserts double-mirror is identity and the relabel happens.
+- **Rotation jitter**: rotate all keypoints by a random angle in ±`rot_deg` about the origin (body is already centered at origin post-normalization; each hand about its own wrist).
+- **Keypoint dropout**: zero `kp_dropout_frac` of the (33 + 21 + 21) keypoints at random.
+- **Whole-hand drop**: with prob `hand_drop_p`, zero a *present* hand's slice and clear its presence flag — real occlusion, teaches the presence-flag behavior.
+- **Coordinate noise**: add N(0, `coord_noise_std`) to every coordinate.
 
 ## Classifier interface
 

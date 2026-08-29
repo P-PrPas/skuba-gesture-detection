@@ -10,9 +10,12 @@ Gesture and posture recognition system for a service robot. The robot's camera o
 
 Body posture: `raise_right_hand`, `raise_left_hand`, `sit`, `squat`, `laying`
 Hand gesture: `ok`, `i_love_you`, `rock`, `two_finger` (peace), `thumb`
+Pose: `t_pose`, `glico_pose` (Glico / running-man: arms up + one knee up), `heart` (big two-arm heart overhead), `mini_heart` (hands-together small heart)
 Special: `idle` (no recognized gesture — must always be present in the label set)
 
-New classes will be added over the project's lifetime. The architecture must support this without retraining the backbone (see below).
+New classes will be added over the project's lifetime. The architecture must support this without retraining the backbone (see below). The authoritative list lives in `features/schema.py` (`CLASSES`) — update it there and keep this section in sync.
+
+`thumb` has no recorded data yet (not in the first session).
 
 ## Core architecture decision — do not deviate without strong reason
 
@@ -43,13 +46,14 @@ camera -> person detect -> body pose estimator (pretrained)
 4. **Never retrain the backbone as a first response to a failure.** First: check if it's a classifier-layer problem (bad features, insufficient data for that class, bad threshold). Only fine-tune the backbone after a reproduced, backbone-attributable failure.
 5. **Splits are by subject/recording session, not by frame.** Frames from the same person/clip in both train and test leak information and silently inflate accuracy.
 
-## Tech stack (fill in once finalized during Phase 1 — see IMPLEMENTATION_PLAN.md)
+## Tech stack (locked at Phase 1)
 
-- Body pose backbone: TBD — candidates: YOLOv8/11-pose, MediaPipe Pose, RTMPose
-- Hand landmark backbone: MediaPipe Hands (default choice)
-- Classifier: LightGBM or Random Forest (primary), small MLP (secondary/comparison)
-- Language/runtime: Python
-- Target deployment hardware: TBD (Jetson / onboard PC) and camera type (RGB / RGB-D) — affects backbone choice, confirm before locking Phase 1
+- Body pose backbone: **MediaPipe Pose** (33 landmarks, `model_complexity=1`). Chosen over YOLO-pose because the deployment target is a shared-VRAM Ubuntu laptop and MediaPipe runs on CPU with zero VRAM. See ARCHITECTURE.md "Tech stack" for the evidence.
+- Hand landmark backbone: **MediaPipe Hands** (21 landmarks/hand, `static_image_mode`, on wrist-anchored crops)
+- Classifier: LightGBM or Random Forest (primary), small MLP (secondary/comparison) — *not yet chosen, Phase 3/4*
+- Feature vector: 152-dim, defined in `features/schema.py`
+- Language/runtime: Python 3.11 (mediapipe has no 3.12+ wheels), `.venv` at repo root
+- Target deployment hardware: Acer notebook, Ubuntu, RGB camera only. Optimize for minimal VRAM + latency (VRAM is shared with other robot modules).
 
 ## How to add a new gesture class later
 
