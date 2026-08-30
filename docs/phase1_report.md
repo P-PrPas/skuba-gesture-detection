@@ -53,12 +53,17 @@ bottleneck (~2/3) — Phase 5 speed work goes there.
 Hands (MediaPipe Hands on wrist crops): `rock` 102/102, `i_love_you` 141/141,
 `two_finger` 87/87, `ok` 35/45 (misses are entry/exit motion blur). ~40–57 ms/crop.
 
+## Done since the benchmark
+
+- `mediapipe` pinned to **1.0.1** — `mp.solutions` is removed in 1.0, and the
+  `numpy<2` / `protobuf` / `jax` pins are gone (clean `pip check`).
+- `backbone/pose.py` + `backbone/hands.py` ported to the Tasks API
+  (`pose_landmarker` lite VIDEO mode; `hand_landmarker` IMAGE mode). Features
+  re-extracted, dataset rebuilt — 1323 frames, per-class counts unchanged.
+
 ## Open items before Phase 1 is fully signed off
 
 - [ ] Record a clean `laying` clip from the robot's camera height and re-run.
 - [ ] On the Acer/Ubuntu: confirm combined FPS + real-time budget; run the
-      MediaPipe GPU delegate for a real number.
-- [ ] Port `backbone/pose.py` from the Solutions API to the Tasks API
-      (pose_landmarker lite), then re-extract features — features are only valid
-      for the exact backbone (ARCHITECTURE.md "Versioning note"). Landmark order
-      is the same 33-point BlazePose topology; verify before retraining.
+      MediaPipe GPU delegate for a real number
+      (`scripts/phase1_eval.py --device gpu --only mediapipe_tasks --merge`).

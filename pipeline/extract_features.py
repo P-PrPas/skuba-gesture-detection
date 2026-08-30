@@ -45,6 +45,8 @@ def extract_clip(row: dict, pose: PoseEstimator, hands: HandLandmarker) -> dict 
         print(f"  MISSING {path} - run scripts/cut_segments.py")
         return None
     cap = cv2.VideoCapture(str(path))
+    if hasattr(pose, "new_sequence"):
+        pose.new_sequence()  # don't let tracking leak between clips
     vecs, frames = [], []
     fi, no_body = -1, 0
     while True:

@@ -2,10 +2,12 @@
 
 Companion to CLAUDE.md. This is where the concrete schemas and formulas live so the classification-layer experiments (Phase 4) have a stable contract to work against.
 
-## Tech stack (Phase 1 — chosen, not yet fully signed off)
+## Tech stack (Phase 1 — backbone locked)
 
-- **Body pose:** MediaPipe Pose, 33-landmark BlazePose topology. **Recommended: Tasks API `pose_landmarker` lite model** (25 ms/frame CPU). `backbone/pose.py` currently still uses the older Solutions API (`model_complexity=1`, 38 ms) — porting it to the Tasks API is a signed-off action item (re-extract features after).
-- **Hand landmarks:** MediaPipe Hands, 21 landmarks/hand, `static_image_mode=True`, run on wrist-anchored crops.
+- **Body pose:** MediaPipe `pose_landmarker` (Tasks API, **lite** model, VIDEO mode), 33-landmark BlazePose topology. `backbone/pose.py`. ~25–38 ms/frame CPU, 0 VRAM. Call `PoseEstimator.new_sequence()` before each independent clip so VIDEO-mode tracking does not leak across clips.
+- **Hand landmarks:** MediaPipe `hand_landmarker` (Tasks API, IMAGE mode), 21 landmarks/hand, on wrist-anchored crops. `backbone/hands.py`. ~40 ms/crop.
+- **`mediapipe==1.0.1`.** `mp.solutions` (the legacy API) was removed in 1.0 — code uses `mediapipe.tasks.python.vision`. `.task` files auto-download to `backbone/models/` via `backbone/assets.py`.
+- Not fully signed off: no clean `laying` clip yet; combined FPS unconfirmed on the Acer (see `docs/phase1_report.md` open items).
 - **Evidence** — full report `results/phase1/backbone_report.docx` (numbers + montages), summary `docs/phase1_report.md`, reproduce with `scripts/phase1_eval.py` + `scripts/phase1_report.py`. Benchmarked MediaPipe Solutions + Tasks (lite/full/heavy) vs YOLO11n/s-pose vs RTMPose-t/m, CPU **and** GPU (RTX 3050 as proxy for the Acer laptop).
   - Latency squat, ms/frame (CPU / GPU): MP Tasks-lite **25 / Linux-only**. MP Solutions 38 / no GPU path. YOLO11n 119 / 24. YOLO11s 198 / 21. RTMPose-t 167 / 37. RTMPose-m 356 / 83.
   - VRAM on CUDA: MediaPipe 0 (CPU) — its GPU delegate is OpenGL-ES (not CUDA), Linux-only, tens of MB. YOLO11n 70 MB / YOLO11s 130 / RTMPose-t 359 / RTMPose-m 611, plus a torch or onnxruntime-gpu runtime.
@@ -14,7 +16,7 @@ Companion to CLAUDE.md. This is where the concrete schemas and formulas live so 
   - Combined MediaPipe pose + 2 hand crops ≈ **116 ms/frame ≈ 8.6 FPS** (CPU, Solutions API); ~10 FPS with Tasks-lite. Hands are ~2/3 of it.
   - Hands on wrist crops: rock/ILY/two-finger 100% detection; `ok` 78% (misses only during entry/exit motion blur).
 - **2D only** (RGB camera, no depth).
-- **Open items** (Phase 1 not fully signed off): (1) no clean `laying` clip yet for the low-camera-angle case; (2) confirm combined FPS + real-time budget on the Acer, and run the MediaPipe GPU delegate there for a real number; (3) port `backbone/pose.py` to the Tasks API and re-extract features.
+- **Open items** (Phase 1 not fully signed off): (1) no clean `laying` clip yet for the low-camera-angle case; (2) confirm combined FPS + real-time budget on the Acer, and run the MediaPipe GPU delegate there for a real number. (`backbone/pose.py` is now on the Tasks API and features are re-extracted — done.)
 - Any change to backbone version/config invalidates every extracted feature file and the classifier — re-extract and retrain (see "Versioning note").
 
 ## Feature vector schema

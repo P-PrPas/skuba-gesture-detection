@@ -27,15 +27,18 @@ feature vector decides the class (or `idle`). See `docs/` for the full picture:
 
 ## Setup
 
-The machine's AV (AVG) does TLS interception, so pip needs the extra root.
-Python 3.11 (mediapipe has no 3.12+ wheels yet).
+This dev box's AV (AVG) does TLS interception, so pip needs the extra root.
+Any Python 3.9–3.13 works (mediapipe 1.0.1 is a pure `py3-none` wheel).
 
 ```bash
-python -m venv .venv                       # use a 3.11 interpreter
+python -m venv .venv
 .venv/Scripts/python -m pip install -r requirements.txt \
     --trusted-host pypi.org --trusted-host files.pythonhosted.org
-python scripts/fix_certs.py                 # append AV root to certifi (for model downloads)
+python scripts/fix_certs.py                 # append AV root to certifi (for .task model downloads)
 ```
+
+The GPU backbone comparison (Phase 1 only) needs `requirements-phase1-gpu.txt`
+on top; the core install above is all the pipeline itself uses.
 
 ## Smoke test
 

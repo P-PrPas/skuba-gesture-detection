@@ -75,6 +75,8 @@ def main():
         h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         writer = cv2.VideoWriter(args.save, cv2.VideoWriter_fourcc(*"mp4v"), fps, (w, h))
 
+    if hasattr(pose, "new_sequence"):
+        pose.new_sequence()
     n, t0 = 0, time.time()
     while True:
         ok, frame = cap.read()

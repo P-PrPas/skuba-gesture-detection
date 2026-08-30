@@ -1,7 +1,9 @@
-# Phase 0 — backbones + smoke test
-mediapipe==0.10.21
-opencv-python==4.11.0.86
-numpy<2.0
-ultralytics==8.3.55   # YOLO-pose — Phase 1 comparison only
-rtmlib==0.0.16        # RTMPose (ONNX) — Phase 1 comparison only
-onnxruntime==1.29.0   #   "  (swap for onnxruntime-gpu via requirements-phase1-gpu.txt to bench on CUDA)
+# Core — backbone + feature pipeline (this is all the production pipeline needs)
+mediapipe==1.0.1          # Pose + Hands via the Tasks API; CPU, 0 VRAM. Backbone LOCKED at Phase 1.
+opencv-contrib-python==4.11.0.86   # mediapipe wants -contrib; keep them the same version
+numpy>=1.26,<3            # mediapipe 1.0.1 dropped its numpy<2 pin; 2.x works (tested)
+
+# Phase 1 backbone comparison ONLY — not imported by backbone/ or pipeline/
+ultralytics==8.3.55       # YOLO-pose
+rtmlib==0.0.16            # RTMPose (ONNX)
+onnxruntime==1.29.0       # for rtmlib; swap to onnxruntime-gpu via requirements-phase1-gpu.txt for the CUDA benchmark

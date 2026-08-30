@@ -46,13 +46,14 @@ camera -> person detect -> body pose estimator (pretrained)
 4. **Never retrain the backbone as a first response to a failure.** First: check if it's a classifier-layer problem (bad features, insufficient data for that class, bad threshold). Only fine-tune the backbone after a reproduced, backbone-attributable failure.
 5. **Splits are by subject/recording session, not by frame.** Frames from the same person/clip in both train and test leak information and silently inflate accuracy.
 
-## Tech stack (locked at Phase 1)
+## Tech stack (backbone LOCKED at Phase 1)
 
-- Body pose backbone: **MediaPipe Pose** (33 landmarks, `model_complexity=1`). Chosen over YOLO-pose because the deployment target is a shared-VRAM Ubuntu laptop and MediaPipe runs on CPU with zero VRAM. See ARCHITECTURE.md "Tech stack" for the evidence.
-- Hand landmark backbone: **MediaPipe Hands** (21 landmarks/hand, `static_image_mode`, on wrist-anchored crops)
+- Body pose backbone: **MediaPipe Pose — Tasks API** (`pose_landmarker` lite model, 33 landmarks, VIDEO running mode). CPU, 0 VRAM. Wrapper: `backbone/pose.py`. Benchmark evidence: `results/phase1/backbone_report.docx`, `docs/phase1_report.md`.
+- Hand landmark backbone: **MediaPipe Hands — Tasks API** (`hand_landmarker`, 21 landmarks/hand, IMAGE mode, on wrist-anchored crops). Wrapper: `backbone/hands.py`.
+- `mediapipe==1.0.1` (pinned). The legacy `mp.solutions` API is gone in 1.0 — everything uses `mediapipe.tasks.python.vision`. `.task` model files auto-download to `backbone/models/` (git-ignored) via `backbone/assets.py`.
 - Classifier: LightGBM or Random Forest (primary), small MLP (secondary/comparison) — *not yet chosen, Phase 3/4*
 - Feature vector: 152-dim, defined in `features/schema.py`
-- Language/runtime: Python 3.11 (mediapipe has no 3.12+ wheels), `.venv` at repo root
+- Language/runtime: Python 3.11, `.venv` at repo root (mediapipe 1.0.1 is `py3-none`, so 3.9–3.13 all work)
 - Target deployment hardware: Acer notebook, Ubuntu, RGB camera only. Optimize for minimal VRAM + latency (VRAM is shared with other robot modules).
 
 ## How to add a new gesture class later

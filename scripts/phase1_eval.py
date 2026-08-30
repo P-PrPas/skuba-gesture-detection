@@ -130,20 +130,10 @@ def timed(fn, frames, warm=5):
 
 
 # ---------- pose backends ----------
-class MPPose:
-    key = "mediapipe_pose"
-    fmt = "mp33"
-
-    def __init__(self, device):
-        from backbone.pose import PoseEstimator
-        self.est = PoseEstimator("mediapipe")
-        self.edges = self.est.edges
-        self.device_actual = "cpu"  # legacy Solutions API — CPU only, all platforms
-
-    def infer(self, frame):
-        kp = self.est.estimate(frame)
-        return (None, None) if kp is None else (kp.xy, kp.visibility)
-
+# NOTE: the legacy MediaPipe Solutions API (MPPose) was removed when mediapipe
+# was pinned to 1.0.1 (mp.solutions no longer exists). backbone/pose.py and the
+# `mediapipe_tasks_lite` backend below are now the same code path. The historical
+# "mediapipe_pose" Solutions numbers stay in the committed metrics_*.json.
 
 _MP_TASK_URLS = {
     "lite": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
@@ -254,7 +244,6 @@ class RtmPose:
 
 
 POSE_SPECS = [
-    (MPPose, {}),
     (MPTasksPose, {"variant": "lite"}),
     (MPTasksPose, {"variant": "full"}),
     (MPTasksPose, {"variant": "heavy"}),

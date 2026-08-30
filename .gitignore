@@ -25,3 +25,4 @@ __pycache__/
 # in the .docx and the annotated videos are large — regenerate both with the scripts
 /results/phase1/annotated/
 /results/phase1/montages/
+/backbone/models/
