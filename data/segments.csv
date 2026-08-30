@@ -14,5 +14,5 @@ glico_pose_01,s01,s01_main,main.MOV,glico_pose,38.0,40.2,medium,"Glico / running
 squat_01,s01,s01_main,main.MOV,squat,53.6,57.2,medium,deep crouch hands toward floor; lower body partly occluded by the robot
 sit_01,s01,s01_main,main.MOV,sit,61.0,65.6,medium,platform-sit: seated upright on the robot platform feet on floor
 sit_02,s01,s01_main,main.MOV,sit,65.6,71.5,medium,platform-sit (was review_05). trimmed the stand-up at the tail
-laying_02,s02,s02_main2,main2.MOV,laying,0.2,3.1,medium,"subject on back on the floor, low camera angle. legs occluded by a large beanbag (backbone guesses them); torso+head+arms horizontal & clear. replaces the old laying_01 (which was a squat->floor transition)"
+laying_03,s02,s02_main3,main3.MOV,laying,0.0,2.6,high,"subject on back on the floor, feet toward camera, legs in the open this time. backbone tracks the full body 23/23 frames. cleaner than the main2 take (laying_02, legs beanbag-occluded)"
 sit_03,s02,s02_main2,main2.MOV,sit,4.4,6.4,high,"floor-sit: seated on the ground, knees up, back against the beanbag. clean full-body keypoints. different sub-type from sit_01/02 (platform-sit) - kept both for variety"
