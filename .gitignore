@@ -26,3 +26,5 @@ __pycache__/
 /results/phase1/annotated/
 /results/phase1/montages/
 /backbone/models/
+/data/features_ext/
+/data/_ext_tmp/
