@@ -9,12 +9,17 @@ Writes data/features_ext/<source>__<class>.npz with X (N,152), subject_id
 (one id per source image — HaGRID images are ~1 unique person each), label,
 source. Re-run is resumable: shards recorded in data/features_ext/<source>.done.
 
+**Run this on Colab / a box with >=8 GB free RAM** — the SKUBA dev laptop OOMs
+(511 MB parquet + MediaPipe). See docs/run_extraction_elsewhere.md. The output
+.npz files are tiny (~0.6 KB/frame); commit them back and everything downstream
+(build_dataset, Phase 3 training) runs fine on the laptop.
+
 COCO / video sources are added as separate SOURCES entries later.
 """
 
 from __future__ import annotations
 
-import io
+
 import json
 import os
 import sys
@@ -52,6 +57,18 @@ SOURCES = {
         "label_map": {"no_gesture": "idle", "train_val_no_gesture": "idle"},
         "max_per_class": 3000,
     },
+    # HaGRID 250k sample (v1, 18 classes) — more `like`/`ok`/`peace`/`rock` if the
+    # 30k sample runs thin. Single 6.8 GB zip: HF auto-converts to parquet.
+    "hagrid_250k": {
+        "repo": "cj-mills/hagrid-sample-250k-384p",
+        "label_map": {
+            "train_val_ok": "ok", "train_val_peace": "two_finger",
+            "train_val_peace_inverted": "two_finger", "train_val_two_up": "two_finger",
+            "train_val_rock": "rock", "train_val_like": "thumb",
+            "train_val_call": "_ily_negative",
+        },
+        "max_per_class": 4000,
+    },
 }
 
 
@@ -65,6 +82,21 @@ def _get(url: str, timeout: int = 120) -> bytes:
             print(f"    retry {attempt + 1} ({e})")
             time.sleep(3 * (attempt + 1))
     raise RuntimeError("unreachable")
+
+
+def _download(url: str, dest: Path, timeout: int = 300) -> None:
+    """Stream a URL to disk in 1 MB chunks - never hold the whole file in RAM."""
+    for attempt in range(4):
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as r, open(dest, "wb") as f:
+                while chunk := r.read(1 << 20):
+                    f.write(chunk)
+            return
+        except Exception as e:  # noqa: BLE001
+            if attempt == 3:
+                raise
+            print(f"    retry {attempt + 1} ({e})")
+            time.sleep(3 * (attempt + 1))
 
 
 def _parquet_shards(repo: str) -> list[str]:
@@ -104,7 +136,7 @@ def run(source: str):
 
     names = _label_names(cfg["repo"])
     shards = _parquet_shards(cfg["repo"])
-    print(f"{source}: {cfg['repo']}  {len(shards)} shards  label_map={cfg['label_map']}")
+    print(f"{source}: {cfg['repo']}  {len(shards)} shards  label_map={cfg['label_map']}", flush=True)
 
     pose = PoseEstimator("mediapipe")
     hands = HandLandmarker()
@@ -130,43 +162,51 @@ def run(source: str):
             print("  all classes full - stopping")
             break
         t0 = time.time()
-        raw = _get(url, 300)
-        tbl = pq.read_table(io.BytesIO(raw))
-        del raw
-        rows = tbl.to_pylist()
-        del tbl
-        kept = 0
-        for r in rows:
-            lbl = r["label"]
-            lname = names[lbl] if (names and isinstance(lbl, int)) else str(lbl)
-            cls = cfg["label_map"].get(lname)
-            if cls is None or counts.get(cls, 0) >= cfg["max_per_class"]:
-                continue
-            img_bytes = r["image"]["bytes"] if isinstance(r["image"], dict) else r["image"]
-            arr = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
-            if arr is None:
-                continue
-            pose.new_sequence()
-            kp = pose.estimate(arr)
-            if kp is None:
-                continue
-            body = normalize_body(kp.xy)
-            scale = kp.shoulder_width or 80.0
-            hnorm = []
-            for wrist in (kp.left_wrist, kp.right_wrist):
-                x0, y0, x1, y1 = wrist_crop_box(wrist, scale, arr.shape)
-                crop = arr[y0:y1, x0:x1]
-                lm = hands.detect(crop)
-                hnorm.append(normalize_hand(lm) if lm is not None else None)
-            vec = fuse(body, hnorm[0], hnorm[1])
-            buf.setdefault(cls, []).append((vec, f"{source}_{counts[cls]:06d}"))
-            counts[cls] = counts.get(cls, 0) + 1
-            kept += 1
+        shard_path = TMP / f"{source}_{si}.parquet"
+        _download(url, shard_path, 600)
+        pf = pq.ParquetFile(shard_path)
+        kept = seen = 0
+        for batch in pf.iter_batches(batch_size=16):
+            for r in batch.to_pylist():
+                seen += 1
+                lbl = r["label"]
+                lname = names[lbl] if (names and isinstance(lbl, int)) else str(lbl)
+                cls = cfg["label_map"].get(lname)
+                if cls is None or counts.get(cls, 0) >= cfg["max_per_class"]:
+                    continue
+                img_bytes = r["image"]["bytes"] if isinstance(r["image"], dict) else r["image"]
+                arr = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
+                if arr is None:
+                    continue
+                pose.new_sequence()
+                kp = pose.estimate(arr)
+                if kp is None:
+                    continue
+                body = normalize_body(kp.xy)
+                scale = kp.shoulder_width or 80.0
+                hnorm = []
+                for wrist in (kp.left_wrist, kp.right_wrist):
+                    x0, y0, x1, y1 = wrist_crop_box(wrist, scale, arr.shape)
+                    crop = arr[y0:y1, x0:x1]
+                    lm = hands.detect(crop)
+                    hnorm.append(normalize_hand(lm) if lm is not None else None)
+                buf.setdefault(cls, []).append(
+                    (fuse(body, hnorm[0], hnorm[1]), f"{source}_{counts[cls]:06d}"))
+                counts[cls] = counts.get(cls, 0) + 1
+                kept += 1
+        del pf
+        shard_path.unlink(missing_ok=True)
         done.add(tag)
         done_file.write_text("\n".join(sorted(done)))
         _flush(source, buf, existing)
-        print(f"  {tag}: {len(rows)} rows -> +{kept}  "
-              f"counts={ {c: counts[c] for c in sorted(counts)} }  ({time.time() - t0:.0f}s)")
+        try:
+            import psutil
+            avail = f"  sysavail {psutil.virtual_memory().available / 1e6:.0f}MB"
+        except Exception:  # noqa: BLE001
+            avail = ""
+        print(f"  {tag}: {seen} rows -> +{kept}  "
+              f"counts={ {c: counts[c] for c in sorted(counts)} }  ({time.time() - t0:.0f}s){avail}",
+              flush=True)
 
     _flush(source, buf, existing, final=True)
     total = sum(counts.values())
