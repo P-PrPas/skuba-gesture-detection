@@ -2,18 +2,19 @@
 
 Companion to CLAUDE.md. This is where the concrete schemas and formulas live so the classification-layer experiments (Phase 4) have a stable contract to work against.
 
-## Tech stack (locked at Phase 1)
+## Tech stack (Phase 1 — chosen, not yet fully signed off)
 
-- **Body pose:** MediaPipe Pose, 33 landmarks, `model_complexity=1`.
+- **Body pose:** MediaPipe Pose, 33-landmark BlazePose topology. **Recommended: Tasks API `pose_landmarker` lite model** (25 ms/frame CPU). `backbone/pose.py` currently still uses the older Solutions API (`model_complexity=1`, 38 ms) — porting it to the Tasks API is a signed-off action item (re-extract features after).
 - **Hand landmarks:** MediaPipe Hands, 21 landmarks/hand, `static_image_mode=True`, run on wrist-anchored crops.
-- **Evidence for the choice** — full report `results/phase1/backbone_report.docx` (numbers + montages), summary `docs/phase1_report.md`, reproduce with `scripts/phase1_eval.py` + `scripts/phase1_report.py`. Benchmarked MediaPipe vs YOLO11n/s-pose vs RTMPose-t/m (rtmlib/ONNX) on the posture + overlapping-finger hard cases, CPU and GPU (RTX 3050 as proxy for the Acer laptop).
-  - VRAM (the binding constraint — shared GPU, CLAUDE.md): MediaPipe 0 (CPU). YOLO11n 70 MB / YOLO11s 130 MB / RTMPose-t 359 MB / RTMPose-m 611 MB on CUDA, plus a torch or onnxruntime-gpu runtime.
-  - Keypoint stability: MediaPipe cleanest on `squat`/`sit`, single-person so it never grabs the bystander; YOLO threw flyaway head keypoints and picked the bystander; RTMPose's detector also picked the bystander (RTMPose-m had the best skeleton otherwise).
-  - Latency squat, ms/frame: MediaPipe 38 CPU (no GPU delegate exists for the pip wheel). YOLO11n 119 CPU / 24 GPU. YOLO11s 198 / 21. RTMPose-t 167 / 37. RTMPose-m 356 / 83.
-  - Combined MediaPipe pose + 2 hand crops ≈ **116 ms/frame ≈ 8.6 FPS** (CPU; GPU pass identical).
+- **Evidence** — full report `results/phase1/backbone_report.docx` (numbers + montages), summary `docs/phase1_report.md`, reproduce with `scripts/phase1_eval.py` + `scripts/phase1_report.py`. Benchmarked MediaPipe Solutions + Tasks (lite/full/heavy) vs YOLO11n/s-pose vs RTMPose-t/m, CPU **and** GPU (RTX 3050 as proxy for the Acer laptop).
+  - Latency squat, ms/frame (CPU / GPU): MP Tasks-lite **25 / Linux-only**. MP Solutions 38 / no GPU path. YOLO11n 119 / 24. YOLO11s 198 / 21. RTMPose-t 167 / 37. RTMPose-m 356 / 83.
+  - VRAM on CUDA: MediaPipe 0 (CPU) — its GPU delegate is OpenGL-ES (not CUDA), Linux-only, tens of MB. YOLO11n 70 MB / YOLO11s 130 / RTMPose-t 359 / RTMPose-m 611, plus a torch or onnxruntime-gpu runtime.
+  - Keypoint stability: MediaPipe (both APIs) cleanest on `squat`/`sit`, single-person so it never grabs the bystander; YOLO threw flyaway head keypoints and picked the bystander; RTMPose's detector also picked the bystander (RTMPose-m best skeleton otherwise).
+  - The GPU verdict: no pose backbone gets a worthwhile speed win from the GPU — the fastest GPU option (YOLO11n, 24 ms) only ties MediaPipe Tasks-lite on CPU and reintroduces the keypoint bugs. Keep pose on CPU, GPU stays free for the CUDA modules.
+  - Combined MediaPipe pose + 2 hand crops ≈ **116 ms/frame ≈ 8.6 FPS** (CPU, Solutions API); ~10 FPS with Tasks-lite. Hands are ~2/3 of it.
   - Hands on wrist crops: rock/ILY/two-finger 100% detection; `ok` 78% (misses only during entry/exit motion blur).
 - **2D only** (RGB camera, no depth).
-- **Open items** (Phase 1 not fully signed off): no clean `laying` clip exists yet to test the low-camera-angle case; latency needs confirming on the Acer laptop with an agreed real-time budget.
+- **Open items** (Phase 1 not fully signed off): (1) no clean `laying` clip yet for the low-camera-angle case; (2) confirm combined FPS + real-time budget on the Acer, and run the MediaPipe GPU delegate there for a real number; (3) port `backbone/pose.py` to the Tasks API and re-extract features.
 - Any change to backbone version/config invalidates every extracted feature file and the classifier — re-extract and retrain (see "Versioning note").
 
 ## Feature vector schema

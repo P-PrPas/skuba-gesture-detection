@@ -12,12 +12,13 @@ feature vector decides the class (or `idle`). See `docs/` for the full picture:
 ## Status
 
 - **Phase 0** ✅ environment, backbone wrappers, smoke test.
-- **Phase 1** 🟡 MediaPipe Pose + Hands chosen — CPU+GPU benchmark vs
-  YOLO11n/s-pose & RTMPose-t/m: MediaPipe wins on VRAM (0 vs 70–611 MB),
-  keypoint stability, and CPU latency. Report:
+- **Phase 1** 🟡 MediaPipe Pose (Tasks API, lite) + Hands chosen — CPU+GPU
+  benchmark of 8 backbones (MediaPipe Solutions/Tasks×3, YOLO11n/s, RTMPose-t/m).
+  MediaPipe Tasks-lite is 25 ms/frame on CPU — as fast as YOLO11n on CUDA, 0 VRAM,
+  no keypoint bugs. GPU buys nothing for pose. Report:
   `results/phase1/backbone_report.docx` (+ `docs/phase1_report.md`,
-  `scripts/phase1_eval.py`). Open: no clean `laying` clip yet; combined
-  ~8.6 FPS CPU needs confirming on the Acer.
+  `scripts/phase1_eval.py`). Open: no clean `laying` clip yet; confirm FPS on the
+  Acer; port `backbone/pose.py` from Solutions → Tasks API.
 - **Phase 2** 🟡 extraction + augmentation pipeline done and run. Dataset built from
   `data/main.MOV` (1 subject, 1 session → **1323 frames, 16 clips, 14 classes**).
   Exit criterion **NOT met**: needs ≥3 subjects for a valid subject-wise

@@ -138,11 +138,75 @@ class MPPose:
         from backbone.pose import PoseEstimator
         self.est = PoseEstimator("mediapipe")
         self.edges = self.est.edges
-        self.device_actual = "cpu"  # mediapipe python wheel is CPU-only
+        self.device_actual = "cpu"  # legacy Solutions API — CPU only, all platforms
 
     def infer(self, frame):
         kp = self.est.estimate(frame)
         return (None, None) if kp is None else (kp.xy, kp.visibility)
+
+
+_MP_TASK_URLS = {
+    "lite": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/latest/pose_landmarker_lite.task",
+    "full": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task",
+    "heavy": "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
+}
+_MP_POSE_EDGES = [
+    (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24),
+    (23, 25), (25, 27), (24, 26), (26, 28), (27, 31), (28, 32), (0, 2), (0, 5),
+]
+
+
+class MPTasksPose:
+    """MediaPipe Tasks pose_landmarker. GPU delegate works on Linux (OpenGL ES,
+    NOT CUDA) but not Windows. On the deploy laptop (Ubuntu) --device gpu will
+    exercise it; on Windows it records the NotImplementedError and stays on CPU."""
+
+    fmt = "mp33"
+
+    def __init__(self, device, variant="lite"):
+        import urllib.request
+        import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions, vision
+
+        self.key = f"mediapipe_tasks_{variant}"
+        self.edges = _MP_POSE_EDGES
+        self._mp = mp
+        model = ROOT / "results" / "phase1" / f"pose_landmarker_{variant}.task"
+        model.parent.mkdir(parents=True, exist_ok=True)
+        if not model.exists():
+            urllib.request.urlretrieve(_MP_TASK_URLS[variant], model)
+        buf = model.read_bytes()  # model_asset_path is resolved oddly on Windows; use buffer
+
+        want_gpu = device == "gpu"
+        self.delegate_note = ""
+        deleg = BaseOptions.Delegate.GPU if want_gpu else BaseOptions.Delegate.CPU
+        try:
+            opts = vision.PoseLandmarkerOptions(
+                base_options=BaseOptions(model_asset_buffer=buf, delegate=deleg),
+                running_mode=vision.RunningMode.VIDEO, num_poses=1)
+            self.m = vision.PoseLandmarker.create_from_options(opts)
+            self.device_actual = "gpu(gl)" if want_gpu else "cpu"
+        except Exception as e:  # noqa: BLE001
+            self.delegate_note = f"GPU delegate unavailable: {type(e).__name__}: {e}"
+            opts = vision.PoseLandmarkerOptions(
+                base_options=BaseOptions(model_asset_buffer=buf, delegate=BaseOptions.Delegate.CPU),
+                running_mode=vision.RunningMode.VIDEO, num_poses=1)
+            self.m = vision.PoseLandmarker.create_from_options(opts)
+            self.device_actual = "cpu (gpu n/a)"
+        self._t = 0
+
+    def infer(self, frame):
+        h, w = frame.shape[:2]
+        img = self._mp.Image(image_format=self._mp.ImageFormat.SRGB,
+                             data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
+        self._t += 33
+        res = self.m.detect_for_video(img, self._t)
+        if not res.pose_landmarks:
+            return None, None
+        lm = res.pose_landmarks[0]
+        xy = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
+        cf = np.array([getattr(p, "visibility", 1.0) for p in lm], dtype=np.float32)
+        return xy, cf
 
 
 class YoloPose:
@@ -191,6 +255,9 @@ class RtmPose:
 
 POSE_SPECS = [
     (MPPose, {}),
+    (MPTasksPose, {"variant": "lite"}),
+    (MPTasksPose, {"variant": "full"}),
+    (MPTasksPose, {"variant": "heavy"}),
     (YoloPose, {"weights": "yolo11n-pose.pt"}),
     (YoloPose, {"weights": "yolo11s-pose.pt"}),
     (RtmPose, {"mode": "lightweight"}),
@@ -307,8 +374,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--device", choices=["cpu", "gpu"], default="cpu")
     ap.add_argument("--annotate", action="store_true")
+    ap.add_argument("--only", default="", help="comma-substrings; run only matching backend keys")
+    ap.add_argument("--merge", action="store_true", help="merge into existing metrics_<device>.json instead of overwriting")
     args = ap.parse_args()
     OUT.mkdir(parents=True, exist_ok=True)
+    only = [s.strip() for s in args.only.split(",") if s.strip()]
 
     global GPU_BASELINE_MB
     GPU_BASELINE_MB = gpu_mem_used_mb()
@@ -342,17 +412,30 @@ def main():
             print(f"  skip {cls.__name__} {kw}: {e}")
             continue
         init_s = round(time.perf_counter() - t_init, 2)
-        print(f"  {be.key} (actual: {be.device_actual}, init {init_s}s)")
+        if only and not any(s in be.key for s in only):
+            del be
+            continue
+        note = getattr(be, "delegate_note", "")
+        print(f"  {be.key} (actual: {be.device_actual}, init {init_s}s){'  ' + note if note else ''}")
         clips = eval_posture(be, args.device, args.annotate)
         report["pose"][be.key] = {"device_actual": be.device_actual, "format": be.fmt,
-                                  "init_s": init_s, "vram": probe_vram(be), "clips": clips}
+                                  "init_s": init_s, "vram": probe_vram(be),
+                                  "delegate_note": note, "clips": clips}
         del be
 
-    report["hands"] = {"model": "mediapipe_hands", "device_actual": "cpu",
-                       "clips": eval_hands(args.device, args.annotate)}
-    report["combined_mediapipe"] = eval_combined(args.device)
+    if not only:
+        report["hands"] = {"model": "mediapipe_hands", "device_actual": "cpu",
+                           "clips": eval_hands(args.device, args.annotate)}
+        report["combined_mediapipe"] = eval_combined(args.device)
 
     path = OUT / f"metrics_{args.device}.json"
+    if args.merge and path.exists():
+        prev = json.loads(path.read_text())
+        prev.setdefault("pose", {}).update(report["pose"])
+        for k in ("hands", "combined_mediapipe", "host", "device_requested"):
+            if report.get(k):
+                prev[k] = report[k]
+        report = prev
     path.write_text(json.dumps(report, indent=2))
     print(f"\n-> {path}")
     _print_summary(report)
@@ -373,8 +456,9 @@ def _print_summary(r):
         s = v["clips"].get("squat", {})
         print(f"  {k:20s} {v['device_actual']:6s} {s.get('ms_mean', 0):8.1f}  {s.get('fps', 0):6.1f}   "
               f"{s.get('detect_pct', 0):5.1f}   {(v.get('vram') or {}).get('model_mb')}")
-    c = r["combined_mediapipe"]
-    print(f"\n  combined MediaPipe: {c['ms_mean']:.1f} ms/frame -> {c['fps']:.1f} FPS")
+    c = r.get("combined_mediapipe")
+    if c:
+        print(f"\n  combined MediaPipe: {c['ms_mean']:.1f} ms/frame -> {c['fps']:.1f} FPS")
 
 
 if __name__ == "__main__":

@@ -197,6 +197,123 @@
           "detect_pct": 100.0
         }
       }
+    },
+    "mediapipe_tasks_lite": {
+      "device_actual": "cpu (gpu n/a)",
+      "format": "mp33",
+      "init_s": 0.29,
+      "vram": {
+        "method": "n/a (CPU)",
+        "model_mb": 0.0
+      },
+      "delegate_note": "GPU delegate unavailable: NotImplementedError: GPU Delegate is not yet supported for Windows",
+      "clips": {
+        "laying": {
+          "ms_mean": 26.835134997963905,
+          "ms_p50": 25.540250004269183,
+          "ms_p90": 30.125999997835606,
+          "fps": 37.26457869788523,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 25.241217495204182,
+          "ms_p50": 24.07445000426378,
+          "ms_p90": 29.474439995829016,
+          "fps": 39.61774031660713,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 26.106615000026068,
+          "ms_p50": 25.58425000461284,
+          "ms_p90": 30.703220015857372,
+          "fps": 38.30446804378896,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "mediapipe_tasks_full": {
+      "device_actual": "cpu (gpu n/a)",
+      "format": "mp33",
+      "init_s": 0.23,
+      "vram": {
+        "method": "n/a (CPU)",
+        "model_mb": 0.0
+      },
+      "delegate_note": "GPU delegate unavailable: NotImplementedError: GPU Delegate is not yet supported for Windows",
+      "clips": {
+        "laying": {
+          "ms_mean": 35.963760002778145,
+          "ms_p50": 35.043799987761304,
+          "ms_p90": 39.78611001803075,
+          "fps": 27.805768916341105,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 36.492010000074515,
+          "ms_p50": 35.612649997347035,
+          "ms_p90": 40.261720001581125,
+          "fps": 27.403258959919118,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 36.89526750240475,
+          "ms_p50": 35.706000024219975,
+          "ms_p90": 43.03670999943279,
+          "fps": 27.103747111599674,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
+    },
+    "mediapipe_tasks_heavy": {
+      "device_actual": "cpu (gpu n/a)",
+      "format": "mp33",
+      "init_s": 0.49,
+      "vram": {
+        "method": "n/a (CPU)",
+        "model_mb": 0.0
+      },
+      "delegate_note": "GPU delegate unavailable: NotImplementedError: GPU Delegate is not yet supported for Windows",
+      "clips": {
+        "laying": {
+          "ms_mean": 179.65064250529394,
+          "ms_p50": 123.92680000630207,
+          "ms_p90": 291.9526900164783,
+          "fps": 5.566359162731811,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "squat": {
+          "ms_mean": 107.98094250058057,
+          "ms_p50": 107.87550000532065,
+          "ms_p90": 112.64737000747118,
+          "fps": 9.260893421027728,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        },
+        "sit": {
+          "ms_mean": 141.73154000163777,
+          "ms_p50": 136.5015500196023,
+          "ms_p90": 172.7208600117592,
+          "fps": 7.0555925659768075,
+          "n": 40,
+          "detect_rate": "40/40",
+          "detect_pct": 100.0
+        }
+      }
     }
   },
   "hands": {
