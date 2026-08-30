@@ -313,19 +313,34 @@ def run_coco(source: str = "coco_pose"):
         cls = _classify_coco(xy, vis)
         if cls:
             want.setdefault(cls, []).append(ann["image_id"])
+    # bound the download loop: shuffle + keep ~3x the cap per class (MediaPipe
+    # drops some, and a raised-hand pose is common in COCO -> thousands of hits).
+    rng = np.random.default_rng(0)
+    for c in want:
+        ids = sorted(set(want[c]))
+        rng.shuffle(ids)
+        want[c] = ids[: SOURCES[source]["max_per_class"] * 3]
     for c, ids in want.items():
-        print(f"  candidate {c}: {len(ids)} images")
+        print(f"  candidate {c}: {len(ids)} images (capped)")
 
     classes = {"t_pose", "raise_right_hand", "raise_left_hand", "_coco_idle"}
     ex = Extractor()
     sink = Sink(source, classes)
-    for cls, ids in want.items():
+    # do the scarce classes first so an interrupt keeps the valuable ones
+    order = sorted(want, key=lambda c: len(want[c]))
+    for cls in order:
+        ids = want[cls]
+        if sink.counts[cls] >= cap:
+            print(f"  {cls}: already {sink.counts[cls]} - skip", flush=True)
+            continue
+        t0, tried = time.time(), 0
         for iid in ids:
             if sink.counts[cls] >= cap:
                 break
             tag = f"{cls}:{iid}"
             if tag in sink.done:
                 continue
+            tried += 1
             p = TMP / f"coco_{iid}.jpg"
             try:
                 _download(_COCO_IMG.format(iid), p, 60)
@@ -333,16 +348,20 @@ def run_coco(source: str = "coco_pose"):
             except Exception:  # noqa: BLE001
                 arr = None
             p.unlink(missing_ok=True)
+            sink.done.add(tag)
             if arr is None:
                 continue
             vec = ex(arr)
             if vec is not None:
                 sink.add(cls, vec)
-            sink.done.add(tag)
+            if tried % 200 == 0:
+                sink.flush()
+                sink.done_file.write_text("\n".join(sorted(sink.done)))
+                print(f"    {cls}: {sink.counts[cls]}/{cap} kept, {tried} tried "
+                      f"({time.time() - t0:.0f}s)", flush=True)
         sink.flush()
         sink.done_file.write_text("\n".join(sorted(sink.done)))
-        print(f"  {cls}: {sink.counts[cls]} kept", flush=True)
-    ann_json.unlink(missing_ok=True)
+        print(f"  {cls}: {sink.counts[cls]} kept ({tried} tried, {time.time() - t0:.0f}s)", flush=True)
     print(f"\n{source}: {sum(sink.counts.values())} rows -> {OUT_DIR}")
 
 
