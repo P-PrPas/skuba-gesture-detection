@@ -12,18 +12,17 @@ feature vector decides the class (or `idle`). See `docs/` for the full picture:
 ## Status
 
 - **Phase 0** ✅ environment, backbone wrappers, smoke test.
-- **Phase 1** 🟡 MediaPipe Pose (Tasks API, lite) + Hands chosen — CPU+GPU
-  benchmark of 8 backbones (MediaPipe Solutions/Tasks×3, YOLO11n/s, RTMPose-t/m).
-  MediaPipe Tasks-lite is 25 ms/frame on CPU — as fast as YOLO11n on CUDA, 0 VRAM,
-  no keypoint bugs. GPU buys nothing for pose. Report:
-  `results/phase1/backbone_report.docx` (+ `docs/phase1_report.md`,
-  `scripts/phase1_eval.py`). Open: no clean `laying` clip yet; confirm FPS on the
-  Acer; port `backbone/pose.py` from Solutions → Tasks API.
-- **Phase 2** 🟡 extraction + augmentation pipeline done and run. Dataset built from
-  `data/main.MOV` (1 subject, 1 session → **1323 frames, 16 clips, 14 classes**).
-  Exit criterion **NOT met**: needs ≥3 subjects for a valid subject-wise
-  train/val/test split (`dataset_card.json` → `phase2_exit_met: false`).
-  Everything is in `train` until more subjects are recorded.
+- **Phase 1** 🟡 **Backbone: MediaPipe Pose + Hands (Tasks API, lite model)** —
+  final. CPU+GPU benchmark of 8 backbones; MediaPipe Tasks-lite is 25 ms/frame
+  on CPU (as fast as YOLO11n on CUDA), 0 VRAM, no keypoint bugs.
+  `results/phase1/backbone_report.docx`, `docs/phase1_report.md`. Open: confirm
+  combined FPS on the Acer; `laying` still weak (see Phase 2).
+- **Phase 2** 🟡 extraction + augmentation pipeline done and run.
+  **1364 frames, 17 clips, 15 classes, 2 subjects** (s01 = `main.MOV` all
+  classes; s02 = `main2.MOV` laying + sit). Exit criterion **NOT met**: needs
+  ≥3 subjects for a valid subject-wise split (`dataset_card.json` →
+  `phase2_exit_met: false`); `laying` is single-subject (s02) and its legs are
+  occluded by a beanbag (12/87 frames lost). Everything is in `train`.
 
 ## Setup
 
@@ -57,9 +56,9 @@ the hand-checked label key (`clip_id, subject_id, session_id, class, start_s,
 end_s, ...`).
 
 ```bash
-python scripts/cut_segments.py data/main.MOV data/segments.csv data/clips  # 1. CSV -> per-class clips
-python -m pipeline.extract_features                                        # 2. clips -> data/features/<clip>.npz
-python -m pipeline.build_dataset                                           # 3. -> data/dataset/{train,val,test}.npz + card
+python scripts/cut_segments.py data/segments.csv data/clips   # 1. CSV -> per-class clips (per-row source_video)
+python -m pipeline.extract_features                           # 2. clips -> data/features/<clip>.npz
+python -m pipeline.build_dataset                             # 3. -> data/dataset/{train,val,test}.npz + card
 ```
 
 `data/dataset/dataset_card.json` records the feature schema, backbone, aug
