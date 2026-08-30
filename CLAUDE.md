@@ -44,7 +44,7 @@ camera -> person detect -> body pose estimator (pretrained)
 2. **Mirror augmentation must swap left/right labels.** Any script that mirrors a training sample and does NOT relabel `raise_right_hand` <-> `raise_left_hand` (and swap left/right hand feature slices) is a bug, not a feature.
 3. **`idle` is a real class**, not a threshold hack applied after the fact. Training data must include real examples of people standing/moving normally without performing any target gesture.
 4. **Never retrain the backbone as a first response to a failure.** First: check if it's a classifier-layer problem (bad features, insufficient data for that class, bad threshold). Only fine-tune the backbone after a reproduced, backbone-attributable failure.
-5. **Splits are by subject/recording session, not by frame.** Frames from the same person/clip in both train and test leak information and silently inflate accuracy.
+5. **Splits are by subject/recording session, not by frame.** Frames from the same person/clip in both train and test leak information and silently inflate accuracy. *(Current reality: only 2 subjects exist and no more recording is possible — see `docs/ARCHITECTURE.md` "Evaluating with a small subject pool". `build_dataset.py` does a cross-person hold-out fold for the classes it can, plus limb-length augmentation; the train-only accuracy is never reported as a generalization number, and Phase 6 field testing is the real gate.)*
 
 ## Tech stack (backbone LOCKED at Phase 1)
 

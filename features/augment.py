@@ -20,7 +20,11 @@ from .schema import (
     MIRROR_LABEL_SWAP,
     N_BODY,
     N_HAND,
+    POSE_LEFT_HIP,
+    POSE_LEFT_SHOULDER,
     POSE_LR_PAIRS,
+    POSE_RIGHT_HIP,
+    POSE_RIGHT_SHOULDER,
     RH_OFF,
     RH_PRESENT,
 )
@@ -33,6 +37,7 @@ class AugParams:
     kp_dropout_frac: float = 0.05  # fraction of keypoints zeroed (occlusion)
     hand_drop_p: float = 0.10      # chance a present hand is dropped entirely
     coord_noise_std: float = 0.02  # gaussian, in normalized units
+    limb_jitter: float = 0.15      # max +/- limb-length scale — fakes body-proportion variety
     n_per_sample: int = 4          # augmented copies per original (train only)
 
 
@@ -117,10 +122,58 @@ def _coord_noise(v: np.ndarray, std: float, rng: np.random.Generator) -> np.ndar
     return out
 
 
+# ---- limb-length jitter: fake different body proportions ----
+# Kinematic chains in the MediaPipe-33 body. Each chain is scaled about its
+# first joint by one random factor; landmarks hanging off a chain tip (hands,
+# feet) are translated rigidly with that tip. The pelvis (hip midpoint) is the
+# fixed root, so the normalization reference (shoulder-hip) is barely disturbed.
+_SL, _SR = POSE_LEFT_SHOULDER, POSE_RIGHT_SHOULDER
+_HL, _HR = POSE_LEFT_HIP, POSE_RIGHT_HIP
+_CHAINS = {
+    "arm": ([_SL, 13, 15], [_SR, 14, 16]),   # shoulder -> elbow -> wrist
+    "leg": ([_HL, 25, 27], [_HR, 26, 28]),   # hip -> knee -> ankle
+}
+_TIP_FOLLOWS = {15: (17, 19, 21), 16: (18, 20, 22),   # hand pts follow the wrist
+                27: (29, 31), 28: (30, 32)}           # foot pts follow the ankle
+_FACE = tuple(range(0, 11))                            # nose..mouth follow the shoulder midpoint
+
+
+def _limb_jitter(v: np.ndarray, amt: float, rng: np.random.Generator) -> np.ndarray:
+    if amt <= 0:
+        return v.copy()
+    out = v.copy()
+    b = _xy(out, _BODY)
+    f = {k: float(rng.uniform(1 - amt, 1 + amt)) for k in ("arm", "leg", "torso")}
+
+    # torso: scale shoulders about the hip midpoint; head rides with the shoulder mid
+    hip_mid = (b[_HL] + b[_HR]) / 2
+    sho_mid_old = (b[_SL] + b[_SR]) / 2
+    for i in (_SL, _SR):
+        b[i] = hip_mid + f["torso"] * (b[i] - hip_mid)
+    d_head = (b[_SL] + b[_SR]) / 2 - sho_mid_old
+    for i in _FACE:
+        b[i] = b[i] + d_head
+
+    # arms / legs: walk each chain from its (already-updated) root joint outward
+    for group in ("arm", "leg"):
+        for chain in _CHAINS[group]:
+            for parent, child in zip(chain, chain[1:]):
+                new_child = b[parent] + f[group] * (b[child] - b[parent])
+                if child in _TIP_FOLLOWS:
+                    d = new_child - b[child]
+                    for t in _TIP_FOLLOWS[child]:
+                        b[t] = b[t] + d
+                b[child] = new_child
+
+    _set_xy(out, _BODY, b)
+    return out
+
+
 def augment_once(
     v: np.ndarray, label: str, p: AugParams, rng: np.random.Generator
 ) -> tuple[np.ndarray, str]:
     out, lab = (mirror(v, label) if rng.random() < p.mirror_p else (v.copy(), label))
+    out = _limb_jitter(out, p.limb_jitter, rng)
     out = _rotate(out, rng.uniform(-p.rot_deg, p.rot_deg))
     out = _hand_drop(out, p.hand_drop_p, rng)
     out = _keypoint_dropout(out, p.kp_dropout_frac, rng)
@@ -152,6 +205,18 @@ def demo() -> None:
     assert lab3 == "sit"
     # rotation by 0 is identity
     assert np.allclose(_rotate(v, 0.0), v, atol=1e-6)
+
+    # limb jitter: amt 0 is identity; amt>0 moves a wrist but keeps the hip midpoint
+    rng2 = np.random.default_rng(3)
+    vb = rng2.normal(0, 1, FEATURE_DIM).astype(np.float32)
+    assert np.allclose(_limb_jitter(vb, 0.0, rng2), vb)
+    j = _limb_jitter(vb, 0.15, np.random.default_rng(1))
+    bj, b0 = _xy(j, _BODY), _xy(vb, _BODY)
+    hip0 = (b0[POSE_LEFT_HIP] + b0[POSE_RIGHT_HIP]) / 2
+    hipj = (bj[POSE_LEFT_HIP] + bj[POSE_RIGHT_HIP]) / 2
+    assert np.allclose(hip0, hipj, atol=1e-6), "hip root must not move"
+    assert not np.allclose(bj[15], b0[15]), "a wrist should have moved"
+    assert np.allclose(j[_LH], vb[_LH]) and np.allclose(j[_RH], vb[_RH]), "hand slices untouched"
     print("augment.demo OK")
 
 

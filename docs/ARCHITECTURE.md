@@ -63,6 +63,7 @@ Implemented in `features/augment.py` (`AugParams`). Applied to the **train split
 | step | parameter | value |
 |---|---|---|
 | Mirror | `mirror_p` | 0.5 |
+| Limb-length jitter | `limb_jitter` (max \|scale\|) | 0.15 |
 | Rotation jitter | `rot_deg` (max \|tilt\|) | 12° |
 | Keypoint dropout | `kp_dropout_frac` | 0.05 |
 | Whole-hand drop | `hand_drop_p` | 0.10 |
@@ -70,10 +71,31 @@ Implemented in `features/augment.py` (`AugParams`). Applied to the **train split
 | Copies per original | `n_per_sample` | 4 |
 
 - **Mirror**: flip x-coordinates of body and both hands; swap left/right body landmark pairs; swap the left/right hand feature slices **and** their presence flags; relabel any class with a left/right variant (`raise_right_hand` <-> `raise_left_hand`). Classes without a left/right variant keep their label. `features/augment.py::demo()` asserts double-mirror is identity and the relabel happens.
+- **Limb-length jitter**: scale the arm chain (shoulder→elbow→wrist), leg chain (hip→knee→ankle) and torso by independent random factors in ±`limb_jitter`, about the pelvis (hip midpoint) as the fixed root; hand/foot tip landmarks translate rigidly with their wrist/ankle. Fakes body-proportion variety — the main mitigation for the small subject pool (see below). Only the body slice is touched; hand slices are untouched.
 - **Rotation jitter**: rotate all keypoints by a random angle in ±`rot_deg` about the origin (body is already centered at origin post-normalization; each hand about its own wrist).
 - **Keypoint dropout**: zero `kp_dropout_frac` of the (33 + 21 + 21) keypoints at random.
 - **Whole-hand drop**: with prob `hand_drop_p`, zero a *present* hand's slice and clear its presence flag — real occlusion, teaches the presence-flag behavior.
 - **Coordinate noise**: add N(0, `coord_noise_std`) to every coordinate.
+
+## Evaluating with a small subject pool
+
+CLAUDE.md #5 wants a subject-wise train/val/test split, which needs ≥3 subjects.
+This dataset has 2 (s01 = every class; s02 = `laying` + `sit` only), and no more
+recording is possible. `pipeline/build_dataset.py` handles this honestly:
+
+- `train.npz` — all data, augmented. The Phase 3 model trains on this.
+- `xperson_train.npz` / `xperson_test.npz` — hold s02 out entirely. `sit` gets a
+  **real cross-person accuracy** here; `laying` is s02-only so it is absent from
+  `xperson_train` and cannot be scored this way (flagged in the card).
+- `dataset_card.json` → `phase2_exit_met: false`, with `phase2_status` recording
+  the mitigations: (1) limb-length jitter for body-proportion variety;
+  (2) the xperson fold; (3) the frozen keypoint backbone + shoulder-hip
+  normalization already strip most subject-identity signal (a keypoint
+  classifier leaks far less than an end-to-end image model). **Phase 6 field
+  testing is the real generalization gate** — budget for collecting failure-case
+  data there.
+- Report Phase 3/4 numbers with these caveats attached; do not present the
+  train-only accuracy as a generalization estimate.
 
 ## Classifier interface
 

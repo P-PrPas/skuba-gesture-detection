@@ -18,11 +18,13 @@ feature vector decides the class (or `idle`). See `docs/` for the full picture:
   `results/phase1/backbone_report.docx`, `docs/phase1_report.md`. Open: confirm
   combined FPS on the Acer; `laying` still weak (see Phase 2).
 - **Phase 2** 🟡 extraction + augmentation pipeline done and run.
-  **1364 frames, 17 clips, 15 classes, 2 subjects** (s01 = `main.MOV` all
-  classes; s02 = `main2.MOV` laying + sit). Exit criterion **NOT met**: needs
-  ≥3 subjects for a valid subject-wise split (`dataset_card.json` →
-  `phase2_exit_met: false`); `laying` is single-subject (s02) and its legs are
-  occluded by a beanbag (12/87 frames lost). Everything is in `train`.
+  **1367 frames, 17 clips, 15 classes, 2 subjects** (s01 = `main.MOV`, all
+  classes; s02 = `main2/main3.MOV`, `laying` + `sit`). Only 2 subjects and no
+  more recording possible, so `phase2_exit_met: false` stays — but the pipeline
+  handles it: **limb-length jitter augmentation** for body-proportion variety, a
+  **cross-person hold-out fold** (`xperson_*.npz` — real `sit` generalization
+  number; `laying` is s02-only), and Phase 6 field testing as the real gate.
+  See `docs/ARCHITECTURE.md` "Evaluating with a small subject pool".
 
 ## Setup
 
