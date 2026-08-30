@@ -15,14 +15,20 @@ evaluation — is light and stays on the laptop.
 # 1. clone + deps
 !git clone https://github.com/P-PrPas/skuba-gesture-detection.git
 %cd skuba-gesture-detection
-!pip -q install "mediapipe==1.0.1" "opencv-contrib-python==4.11.0.86" "numpy>=1.26,<3" "datasets>=3" pyarrow
+!pip -q install "mediapipe==1.0.1" "opencv-contrib-python==4.11.0.86" "numpy>=1.26,<3" pyarrow requests
 ```
 
 ```python
-# 2. run each source (resumable; re-run if a shard times out)
+# 2. run each source (resumable — re-run the same line if a shard times out)
 !python -m pipeline.extract_external --list
+
+# batch 1 — HaGRID hand gestures + idle  (~30-60 min CPU)
 !python -m pipeline.extract_external hagrid
 !python -m pipeline.extract_external hagrid_nogesture
+
+# batch 2 — mini_heart + COCO poses  (~1-2 h CPU; COCO annotations are ~250 MB)
+!python -m pipeline.extract_external hagrid_v2_heart
+!python -m pipeline.extract_external coco_pose
 ```
 
 ```python
@@ -46,14 +52,28 @@ python -m pipeline.build_dataset           # merges features_ext/ + features/
 
 ## Batches
 
-| batch | sources | classes | ~Colab time |
+| batch | sources | classes it covers | ~Colab time |
 |---|---|---|---|
-| 1 (ready) | `hagrid`, `hagrid_nogesture` | ok, two_finger, rock, thumb, idle (+ ILY negative) | ~30–60 min CPU |
-| 2 (todo) | COCO filter, Le2i fall | t_pose, raise_right_hand, sit, laying | needs the COCO/Le2i `SOURCES` entries written first |
+| 1 | `hagrid`, `hagrid_nogesture` | ok, two_finger, rock, thumb, idle (+ ILY hard-negative) | ~30–60 min |
+| 2 | `hagrid_v2_heart`, `coco_pose` | mini_heart, t_pose, raise_right_hand, raise_left_hand (+ more idle) | ~1–2 h |
 
-`squat` needs a Kaggle gym-workout dataset (`~/.kaggle/kaggle.json`); `mini_heart`
-needs HaGRID **v2** `hand_heart` (42 GB zip — Colab Pro or a scratch VM). Both
-fall back to aug(s01) if not pulled.
+**`hagrid_v2_heart`** streams the `testdummyvt/hagRIDv2_512px` **val** split
+(184 parquet shards, ~50–100 MB each, deleted after each) and stops once
+`mini_heart` hits 1800 — it does **not** download the 42 GB dataset. Expect it
+to chew through ~40–70 shards before it fills.
+
+**`coco_pose`** downloads only `person_keypoints_train2017.json` (~250 MB),
+filters it for arms-out / arm-raised / arms-down poses, then downloads **only**
+the few hundred matching images one at a time (deleted after each) and runs
+MediaPipe on them.
+
+Still needs the user:
+- `squat` → a Kaggle gym-workout video dataset (`~/.kaggle/kaggle.json`). Not
+  wired yet; falls back to aug(s01).
+- `sit` / `laying` → no clean streamable source found (NTU needs registration,
+  Le2i's lab link is dead). `sit` falls back to aug(s01 platform-sits) with
+  s02 `sit_03` as the cross-person test; `laying` is s02-only → aug-only like
+  the other 3 stuck classes.
 
 ## Subject ids
 

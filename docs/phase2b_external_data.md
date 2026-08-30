@@ -15,9 +15,9 @@ Full dataset survey + licences: `docs/external_datasets.md`.
 | `idle` | HaGRID `no_gesture` + COCO person crops (no gesture) | s01 `idle_01` | |
 | `raise_right_hand` | COCO, filtered (one wrist above nose, other down) | s01 | heuristic-labelled, spot-checked |
 | `raise_left_hand` | mirror-aug of `raise_right_hand` (schema `MIRROR_LABEL_SWAP`) | s01 | no own external data needed |
-| `sit` | Le2i / NTU RGB+D ADL sitting clips | s01 `sit_01/02` + s02 `sit_03` | |
-| `squat` | Kaggle gym-workout `squat` clips (mid-rep frames) | s01 `squat_01` | falls back to aug(s01) if the pull is blocked |
-| `laying` | Le2i / NTU RGB+D post-fall floor frames | s02 `laying_03` | s01 has no usable laying |
+| `sit` | **aug(s01 `sit_01/02`) only** — no clean external source (NTU registration, Le2i link dead) | s01 `sit_01/02` + s02 `sit_03` | s02 `sit_03` is still a real cross-person test |
+| `squat` | Kaggle gym-workout `squat` clips (mid-rep frames) — needs `kaggle.json` | s01 `squat_01` | falls back to aug(s01) if the pull is blocked |
+| `laying` | **aug(s01... none) → aug(s02 `laying_03`) only** | s02 `laying_03` (originals) | s01 has no usable laying; joins the aug-only group |
 | `ok` | HaGRID `ok` | s01 `ok_01` | |
 | `i_love_you` | **aug(s01 `i_love_you_01`) only** + HaGRID `call` as hard negative | s01 `i_love_you_01` (originals) | no dataset has the ASL ILY handshape |
 | `rock` | HaGRID `rock` | s01 `rock_01` | |
