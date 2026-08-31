@@ -60,6 +60,29 @@ def main():
     if not evals:
         raise SystemExit("run classifier.evaluate first")
     primary = evals.get("rf") or next(iter(evals.values()))
+    metas = {}
+    for m in evals:
+        mf = MODELS / f"{m}.meta.json"
+        jb = MODELS / f"{m}.joblib"
+        metas[m] = {
+            "fit_s": json.loads(mf.read_text()).get("fit_seconds") if mf.exists() else None,
+            "size_mb": round(jb.stat().st_size / 1e6, 1) if jb.exists() else None,
+        }
+    # sit@s02 recall per model (recompute from the model, cheap)
+    sit_s02 = {}
+    try:
+        import joblib
+        import numpy as np
+        d = np.load(DS / "test.npz", allow_pickle=True)
+        ksit = card["classes"].index("sit")
+        m2 = (d["y"].astype(int) == ksit) & (d["subject_id"] == "s02")
+        if m2.any():
+            for m in evals:
+                b = joblib.load(MODELS / f"{m}.joblib")
+                X = np.clip(d["X"][m2].astype("float32"), -b["clip"], b["clip"])
+                sit_s02[m] = round(float((b["clf"].predict(X) == ksit).mean()), 2)
+    except Exception:  # noqa: BLE001
+        pass
 
     doc = Document()
     doc.add_heading("SKUBA gesture detection — Phase 3 baseline classifier", 0)
@@ -71,12 +94,13 @@ def main():
     r.font.size = Pt(13)
     r.font.color.rgb = RGBColor(0xB0, 0x00, 0x00)
     doc.add_paragraph(
-        f"Two tree baselines (LightGBM, RandomForest) tie at macro-F1 "
-        f"{primary['macro_f1_real_eval']:.2f} on the classes that are a real "
-        f"generalisation test. Most classes work, but `rock` and `mini_heart` are "
-        f"at 0.00 F1 — every test frame of each is classified as a different "
-        f"class. Those two failures, and their causes, define the Phase 4 work; "
-        f"the model-family choice does not (both trees behave the same)."
+        f"Two tree baselines were trained independently as candidates for the "
+        f"single classifier slot (section 3). On accuracy they tie — macro-F1 "
+        f"{primary['macro_f1_real_eval']:.2f} on the real-generalisation classes. "
+        f"Most classes work, but `rock` and `mini_heart` are at 0.00 F1 — every "
+        f"test frame of each is classified as a different class. Those two "
+        f"failures are data/feature problems, not model-choice problems, and "
+        f"define the Phase 4 work."
     )
 
     doc.add_heading("1. Architecture — where this sits", 1)
@@ -106,7 +130,49 @@ def main():
         f"NOT in training (except as augmented copies for the 6 aug-only classes)."
     )
 
-    doc.add_heading("3. Results", 1)
+    doc.add_heading("3. LightGBM vs RandomForest — the head-to-head", 1)
+    doc.add_paragraph(
+        "Both trained on the same 62,627-row train.npz, class_weight='balanced', "
+        "raw 152-d features clipped to +-10. This is the Phase 3 comparison; "
+        "Phase 4 adds an MLP and locks one."
+    )
+    lg, rf = evals.get("lgbm"), evals.get("rf")
+    if lg and rf:
+        crows = [
+            ["macro-F1 (all classes)", f"{lg['macro_f1_all']:.3f}", f"{rf['macro_f1_all']:.3f}"],
+            ["macro-F1 (real-eval only)", f"{lg['macro_f1_real_eval']:.3f}",
+             f"{rf['macro_f1_real_eval']:.3f}"],
+            ["sit @ s02 recall (only clean cross-person number)",
+             f"{sit_s02.get('lgbm', '-')}", f"{sit_s02.get('rf', '-')}"],
+            ["fit time", f"{metas['lgbm']['fit_s']} s", f"{metas['rf']['fit_s']} s"],
+            ["model file size", f"{metas['lgbm']['size_mb']} MB", f"{metas['rf']['size_mb']} MB"],
+        ]
+        _table(doc, ["metric", "LightGBM", "RandomForest"], crows)
+        doc.add_paragraph(
+            "Per-class F1 (bold = the two differ by > 0.05):"
+        )
+        prows, pcolors = [], []
+        for c in card["classes"]:
+            a = lg["per_class"].get(c, {}).get("f1")
+            b = rf["per_class"].get(c, {}).get("f1")
+            if a is None:
+                continue
+            diff = abs(a - b) > 0.05
+            prows.append([c, f"{a:.2f}", f"{b:.2f}", "*" if diff else ""])
+            pcolors.append(RGBColor(0x88, 0x66, 0) if diff else None)
+        _table(doc, ["class", "LGBM F1", "RF F1", ""], prows, pcolors)
+        doc.add_paragraph(
+            "Read: accuracy is a wash. RandomForest is chosen as the working "
+            "default for two reasons — its `sit`@s02 cross-person recall is much "
+            "higher (0.77 vs 0.43; that is the only honest generalisation number "
+            "we have) and its confidences are calibrated (LightGBM outputs ~1.0 "
+            "on almost everything, which breaks the idle/unknown threshold in "
+            "Phase 5). LightGBM's one real advantage is size (36 MB vs 396 MB) — "
+            "revisit if the deploy target is tight on disk. Final lock is a "
+            "Phase 4 decision, after the MLP and the feature fixes."
+        )
+
+    doc.add_heading("4. Per-class results (RandomForest)", 1)
     rows, colors = [], []
     for c in card["classes"]:
         pc = primary["per_class"].get(c)
@@ -118,18 +184,12 @@ def main():
         colors.append(RGBColor(0xB0, 0, 0) if pc["f1"] == 0 else
                       (RGBColor(0x88, 0x66, 0) if pc["f1"] < 0.6 else None))
     _table(doc, ["class", "eval type", "n", "prec", "rec", "F1", "conf"], rows, colors)
-    doc.add_paragraph(
-        f"macro-F1: all classes {primary['macro_f1_all']:.2f}; "
-        f"real-eval only {primary['macro_f1_real_eval']:.2f}. "
-        "Model comparison: " + ", ".join(
-            f"{m} {e['macro_f1_real_eval']:.2f}" for m, e in evals.items()) + " — a tie."
-    ).runs[0].font.size = Pt(9)
     doc.add_paragraph("What each eval type means:")
     for k, txt in EVAL_MEANS.items():
         if k != "n/a":
             doc.add_paragraph(f"{k}: {txt}", style="List Bullet")
 
-    doc.add_heading("4. sit — the one clean cross-person number", 1)
+    doc.add_heading("5. sit — the one clean cross-person number", 1)
     doc.add_paragraph(
         "`sit` is trained on augmented s01 frames only, so its s02 test frames "
         "(a different person, different session, different room) are a genuine "
@@ -140,7 +200,7 @@ def main():
         ["s02 (60 frames)", "0.77", "clean cross-person — the honest sit number"],
     ])
 
-    doc.add_heading("5. The two failures", 1)
+    doc.add_heading("6. The two failures", 1)
     doc.add_paragraph("rock -> i_love_you (all 102 frames); mini_heart -> heart (40/45).")
     for t in [
         "s01-attractor effect: `i_love_you` and `heart` are trained ONLY on "
@@ -172,13 +232,13 @@ def main():
         )
         doc.add_picture(str(hg), width=Inches(6.0))
 
-    doc.add_heading("6. Top confusions", 1)
+    doc.add_heading("7. Top confusions", 1)
     conf = primary["confusion"]
     pairs = sorted(((cnt, a, b) for a, d in conf.items() for b, cnt in d.items() if a != b),
                    reverse=True)[:10]
     _table(doc, ["true", "predicted as", "count"], [[a, b, cnt] for cnt, a, b in pairs])
 
-    doc.add_heading("7. Phase 4 plan", 1)
+    doc.add_heading("8. Phase 4 plan", 1)
     for i, t in enumerate([
         "Close the hand-landmark domain gap — add hand-scale + hand-rotation "
         "jitter to features/augment.py, or canonicalise hand orientation in "
@@ -198,7 +258,12 @@ def main():
         doc.add_paragraph(f"{i}. {t}", style="List Bullet")
 
     out = OUT / "classifier_report.docx"
-    doc.save(str(out))
+    try:
+        doc.save(str(out))
+    except PermissionError:
+        out = OUT / "classifier_report.NEW.docx"
+        doc.save(str(out))
+        print("!! classifier_report.docx is open (Word?) — wrote", out.name, "instead")
     print(f"-> {out}")
 
 
