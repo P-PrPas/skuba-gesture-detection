@@ -28,3 +28,4 @@ __pycache__/
 /backbone/models/
 /data/features_ext/
 /data/_ext_tmp/
+/classifier/models/*.joblib
