@@ -33,12 +33,14 @@ FEAT_EXT = ROOT / "data" / "features_ext"  # external, per (source,class)
 OUT = ROOT / "data" / "dataset"
 SEED = 20260831
 
-# No viable training path — kept in the class list but NOT modelled in Phase 3:
-#   i_love_you : ASL ILY handshape only on Roboflow (needs an API key / manual
-#                export — not pulled yet); s01's execution overlaps s01's `rock`
-#                so aug(s01) training poisons `rock`. heart : the overhead 2-arm
-#                heart is in no dataset; COCO-mining branch is wired but not yet
-#                extracted. Still written to test.npz; excluded from train.npz.
+# No viable training path yet — kept in the class list but NOT modelled:
+#   i_love_you : `pipeline.extract_external roboflow_ily` pulls the ASL ILY
+#                handshape from Roboflow (needs ROBOFLOW_API_KEY, run on Colab).
+#                Once data/features_ext/roboflow_ily__i_love_you.npz lands,
+#                remove i_love_you from PENDING_DATA + AUG_ONLY and rebuild.
+#   heart      : `_classify_coco` heart branch is wired; re-run `coco_pose` to
+#                mine it. Yield unverified — keep pending until the count is seen.
+#   Both stay in test.npz so we track them; 0 train rows.
 #   mini_heart : NOW MODELLED — HaGRIDv2 hand_heart (chest-level) + arm-elevation
 #                augmentation (features/augment.raise_arms, docs R2.4).
 PENDING_DATA = {"i_love_you", "heart"}

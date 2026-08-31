@@ -5,7 +5,8 @@ features. Disk-safe — one parquet shard (or one image) at a time, deleted afte
     python -m pipeline.extract_external hagrid            # HaGRID v1 hand gestures
     python -m pipeline.extract_external hagrid_nogesture  # idle
     python -m pipeline.extract_external hagrid_v2_heart   # mini_heart
-    python -m pipeline.extract_external coco_pose         # t_pose, raise_right_hand, idle
+    python -m pipeline.extract_external coco_pose         # t_pose, raise_*_hand, heart, idle
+    python -m pipeline.extract_external roboflow_ily      # i_love_you  (needs ROBOFLOW_API_KEY)
 
 **Run on Colab / a box with >=8 GB free RAM** — the SKUBA laptop OOMs on a
 0.5 GB parquet shard + MediaPipe. See docs/run_extraction_elsewhere.md. Output
@@ -21,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import time
 import urllib.request
@@ -66,6 +68,15 @@ SOURCES = {
         "max_per_class": 1800,
     },
     "coco_pose": {"kind": "coco", "max_per_class": 1500},
+    "roboflow_ily": {
+        "kind": "roboflow",
+        # (workspace, project, version, {roboflow_class_name: our_class})
+        "projects": [
+            ("ananthu-s", "asl-gvpbe", 1, {"IloveYou": "i_love_you"}),
+            ("asl-auyfj", "asl-detection-lvx6a", 1, {"I Love You": "i_love_you"}),
+        ],
+        "max_per_class": 1500,
+    },
 }
 
 
@@ -376,18 +387,115 @@ def run_coco(source: str = "coco_pose"):
     print(f"\n{source}: {sum(sink.counts.values())} rows -> {OUT_DIR}")
 
 
+# ---------------- Roboflow Universe -> i_love_you (ASL ILY handshape) ----------------
+# Roboflow needs a free API key: roboflow.com -> account -> Settings -> API ->
+# "Private API Key". Set it as ROBOFLOW_API_KEY. `pip install roboflow`.
+
+
+def _iter_roboflow_export(loc: Path, lmap: dict):
+    """Yield (image_path, bbox_or_None, our_class) from a downloaded export,
+    handling both COCO-detection and folder-classification layouts."""
+    for split in ("train", "valid", "test"):
+        d = loc / split
+        if not d.is_dir():
+            continue
+        annf = d / "_annotations.coco.json"
+        if annf.exists():                                   # detection export
+            j = json.loads(annf.read_text())
+            cats = {c["id"]: c["name"] for c in j["categories"]}
+            per_img: dict[int, list] = {}
+            for a in j["annotations"]:
+                per_img.setdefault(a["image_id"], []).append(a)
+            for im in j["images"]:
+                for a in per_img.get(im["id"], []):
+                    cls = lmap.get(cats.get(a["category_id"], ""))
+                    if cls:
+                        yield d / im["file_name"], a["bbox"], cls
+                        break
+        else:                                               # classification export
+            for sub in d.iterdir():
+                cls = lmap.get(sub.name) if sub.is_dir() else None
+                if not cls:
+                    continue
+                for imgf in sorted(sub.glob("*.jpg")) + sorted(sub.glob("*.png")):
+                    yield imgf, None, cls
+
+
+def run_roboflow(source: str):
+    import cv2
+    from roboflow import Roboflow
+
+    key = os.environ.get("ROBOFLOW_API_KEY")
+    if not key:
+        raise SystemExit("set ROBOFLOW_API_KEY — free key at roboflow.com "
+                         "(account -> Settings -> API -> Private API Key)")
+    cfg = SOURCES[source]
+    cap = cfg["max_per_class"]
+    classes = {c for *_, m in cfg["projects"] for c in m.values()}
+    print(f"{source}: {len(cfg['projects'])} Roboflow projects -> {sorted(classes)}", flush=True)
+
+    rf = Roboflow(api_key=key)
+    ex = Extractor()
+    sink = Sink(source, classes)
+
+    for ws, proj, ver, lmap in cfg["projects"]:
+        tag = f"{ws}/{proj}"
+        if tag in sink.done:
+            continue
+        if sink.full(cap):
+            print("  all classes full - stopping")
+            break
+        loc = TMP / f"rf_{proj}"
+        if loc.exists():
+            shutil.rmtree(loc, ignore_errors=True)
+        t0 = time.time()
+        rf.workspace(ws).project(proj).version(ver).download("coco", location=str(loc))
+        kept = 0
+        for imgf, bbox, cls in _iter_roboflow_export(loc, lmap):
+            if sink.counts[cls] >= cap:
+                continue
+            arr = cv2.imread(str(imgf))
+            if arr is None:
+                continue
+            if bbox is not None:                       # crop to the ILY hand, padded
+                x, y, w, h = (int(round(t)) for t in bbox)
+                pad = int(0.3 * max(w, h))
+                sub = arr[max(0, y - pad): y + h + pad, max(0, x - pad): x + w + pad]
+                if sub.size:
+                    arr = sub
+            vec = ex(arr)
+            if vec is not None:
+                sink.add(cls, vec)
+                kept += 1
+        shutil.rmtree(loc, ignore_errors=True)
+        sink.flush(tag)
+        print(f"  {tag}: +{kept}  {dict(sorted(sink.counts.items()))}  "
+              f"({time.time() - t0:.0f}s)", flush=True)
+    sink.flush()
+    print(f"\n{source}: {sum(sink.counts.values())} rows -> {OUT_DIR}")
+    for c in sorted(sink.counts):
+        print(f"  {c:22s} {sink.counts[c]}")
+
+
 def main():
     if "--list" in sys.argv or len(sys.argv) < 2:
         for k, v in SOURCES.items():
-            cls = sorted(set(v["label_map"].values())) if "label_map" in v else "[coco filter]"
-            print(f"{k:20s} {v.get('repo', 'COCO'):45s} -> {cls}")
+            if "label_map" in v:
+                cls = sorted(set(v["label_map"].values()))
+            elif "projects" in v:
+                cls = sorted({c for *_, m in v["projects"] for c in m.values()})
+            else:
+                cls = "[coco filter]"
+            print(f"{k:20s} {v.get('repo', v['kind']):45s} -> {cls}")
         return
     src = sys.argv[1]
     if src not in SOURCES:
         raise SystemExit(f"unknown source {src!r}; --list to see options")
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     TMP.mkdir(parents=True, exist_ok=True)
-    (run_coco if SOURCES[src]["kind"] == "coco" else run_hf_parquet)(src)
+    runner = {"coco": run_coco, "roboflow": run_roboflow}.get(
+        SOURCES[src]["kind"], run_hf_parquet)
+    runner(src)
 
 
 if __name__ == "__main__":

@@ -16,6 +16,7 @@ evaluation — is light and stays on the laptop.
 !git clone https://github.com/P-PrPas/skuba-gesture-detection.git
 %cd skuba-gesture-detection
 !pip -q install "mediapipe==1.0.1" "opencv-contrib-python==4.11.0.86" "numpy>=1.26,<3" pyarrow requests
+!pip -q install roboflow          # only for the roboflow_ily source
 ```
 
 ```python
@@ -28,7 +29,11 @@ evaluation — is light and stays on the laptop.
 
 # batch 2 — mini_heart + COCO poses  (~1-2 h CPU; COCO annotations are ~250 MB)
 !python -m pipeline.extract_external hagrid_v2_heart
-!python -m pipeline.extract_external coco_pose
+!python -m pipeline.extract_external coco_pose   # now also mines `heart` (arms-overhead filter)
+
+# batch 3 — i_love_you from Roboflow Universe  (~10-20 min)
+import os; os.environ["ROBOFLOW_API_KEY"] = "PASTE_YOUR_FREE_KEY"  # roboflow.com -> Settings -> API
+!python -m pipeline.extract_external roboflow_ily
 ```
 
 ```python
@@ -55,7 +60,21 @@ python -m pipeline.build_dataset           # merges features_ext/ + features/
 | batch | sources | classes it covers | ~Colab time |
 |---|---|---|---|
 | 1 | `hagrid`, `hagrid_nogesture` | ok, two_finger, rock, thumb, idle (+ ILY hard-negative) | ~30–60 min |
-| 2 | `hagrid_v2_heart`, `coco_pose` | mini_heart, t_pose, raise_right_hand, raise_left_hand (+ more idle) | ~1–2 h |
+| 2 | `hagrid_v2_heart`, `coco_pose` | mini_heart, t_pose, raise_right_hand, raise_left_hand, **heart** (+ more idle) | ~1–2 h |
+| 3 | `roboflow_ily` | **i_love_you** (ASL ILY handshape, 2 CC BY 4.0 Roboflow sets) | ~10–20 min |
+
+**`roboflow_ily`** needs a free Roboflow API key in `ROBOFLOW_API_KEY`
+(roboflow.com → account → Settings → API → Private API Key) and
+`pip install roboflow`. It downloads each project's COCO export to `data/
+_ext_tmp/`, crops to the ILY-hand bbox (detection sets) or uses the whole image
+(classification sets), extracts, and deletes the export. After this lands,
+remove `i_love_you` from `PENDING_DATA` / `AUG_ONLY` in `build_dataset.py` and
+rebuild — it then flows through the normal external path.
+
+**`heart` via `coco_pose`**: `_classify_coco` now has a heart branch (both
+wrists above the eyes, hands near the midline, both elbows outboard). Yield is
+unverified — could be low. Spot-check `data/samples_ext/heart/` after and, if
+too thin, keep `heart` in `PENDING_DATA`.
 
 **`hagrid_v2_heart`** streams the `testdummyvt/hagRIDv2_512px` **val** split
 (184 parquet shards, ~50–100 MB each, deleted after each) and stops once
