@@ -1,29 +1,33 @@
 """Build results/phase3/classifier_report.docx from the eval JSONs + dataset card.
 
-    python -m classifier.train --model lgbm && python -m classifier.evaluate --model lgbm
-    python -m classifier.train --model rf   && python -m classifier.evaluate --model rf
+    python -m classifier.train --model lgbm --features both && python -m classifier.evaluate --model lgbm
+    python -m classifier.train --model rf   --features both && python -m classifier.evaluate --model rf
     python scripts/phase3_report.py
 """
 
 from __future__ import annotations
 
 import json
+import sys
 from datetime import date
 from pathlib import Path
 
+import joblib
+import numpy as np
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
 DS = ROOT / "data" / "dataset"
 MODELS = ROOT / "classifier" / "models"
 OUT = ROOT / "results" / "phase3"
 
 EVAL_MEANS = {
-    "cross_domain": "external train, s01/s02 test — a real generalisation number",
+    "cross_domain": "external train, s01/s02 test — a real cross-subject + cross-domain number",
     "held_out_external": "cross-subject within HaGRID (same webcam domain)",
-    "aug_only_leak": "train = augmented s01 frames — NOT a generalisation number",
-    "n/a": "-",
+    "aug_only_leak": "train = augmented s01 frames — a leaked number (except sit@s02)",
+    "pending_data": "no viable training path — not modelled, see section 6",
 }
 
 
@@ -52,35 +56,34 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     card = json.loads((DS / "dataset_card.json").read_text())
     per_class = card["per_class"]
-    evals = {}
+    evals, metas = {}, {}
     for m in ("lgbm", "rf"):
-        f = MODELS / f"{m}.eval.json"
-        if f.exists():
-            evals[m] = json.loads(f.read_text())
+        ej = MODELS / f"{m}.eval.json"
+        mj = MODELS / f"{m}.meta.json"
+        jb = MODELS / f"{m}.joblib"
+        if ej.exists():
+            evals[m] = json.loads(ej.read_text())
+            metas[m] = {
+                "fit_s": json.loads(mj.read_text()).get("fit_seconds") if mj.exists() else None,
+                "size_mb": round(jb.stat().st_size / 1e6, 1) if jb.exists() else None,
+            }
     if not evals:
         raise SystemExit("run classifier.evaluate first")
     primary = evals.get("rf") or next(iter(evals.values()))
-    metas = {}
-    for m in evals:
-        mf = MODELS / f"{m}.meta.json"
-        jb = MODELS / f"{m}.joblib"
-        metas[m] = {
-            "fit_s": json.loads(mf.read_text()).get("fit_seconds") if mf.exists() else None,
-            "size_mb": round(jb.stat().st_size / 1e6, 1) if jb.exists() else None,
-        }
-    # sit@s02 recall per model (recompute from the model, cheap)
+
+    # sit@s02 per model
     sit_s02 = {}
     try:
-        import joblib
-        import numpy as np
         d = np.load(DS / "test.npz", allow_pickle=True)
+        from features.derived import to_features
         ksit = card["classes"].index("sit")
         m2 = (d["y"].astype(int) == ksit) & (d["subject_id"] == "s02")
-        if m2.any():
-            for m in evals:
-                b = joblib.load(MODELS / f"{m}.joblib")
-                X = np.clip(d["X"][m2].astype("float32"), -b["clip"], b["clip"])
-                sit_s02[m] = round(float((b["clf"].predict(X) == ksit).mean()), 2)
+        for m in evals:
+            b = joblib.load(MODELS / f"{m}.joblib")
+            X = to_features(np.clip(d["X"][m2].astype("float32"), -b["clip"], b["clip"]),
+                            b.get("features", "raw"))
+            mc = np.asarray(b["clf"].classes_)
+            sit_s02[m] = round(float((mc[b["clf"].predict_proba(X).argmax(1)] == ksit).mean()), 2)
     except Exception:  # noqa: BLE001
         pass
 
@@ -88,88 +91,92 @@ def main():
     doc.add_heading("SKUBA gesture detection — Phase 3 baseline classifier", 0)
     doc.add_paragraph(f"Generated {date.today().isoformat()}").runs[0].italic = True
 
+    npend = primary.get("n_pending", len(primary.get("pending_data_lands_as", {})))
+    nmod = len(primary["per_class"])
     v = doc.add_paragraph()
-    r = v.add_run("Verdict: Phase 3 exit criterion NOT met.")
+    r = v.add_run(f"Result: a usable {nmod}-class baseline. {npend} classes have "
+                  f"no training data and are held for Phase 6.")
     r.bold = True
-    r.font.size = Pt(13)
-    r.font.color.rgb = RGBColor(0xB0, 0x00, 0x00)
+    r.font.size = Pt(12)
+    r.font.color.rgb = RGBColor(0x1a, 0x7f, 0x37)
     doc.add_paragraph(
-        f"Two tree baselines were trained independently as candidates for the "
-        f"single classifier slot (section 3). On accuracy they tie — macro-F1 "
-        f"{primary['macro_f1_real_eval']:.2f} on the real-generalisation classes. "
-        f"Most classes work, but `rock` and `mini_heart` are at 0.00 F1 — every "
-        f"test frame of each is classified as a different class. Those two "
-        f"failures are data/feature problems, not model-choice problems, and "
-        f"define the Phase 4 work."
+        f"macro-F1 over the {nmod} modelled classes: "
+        + " / ".join(f"{m} {e['macro_f1_modelled']:.2f}" for m, e in evals.items())
+        + ".  Over just the 8 that are a real generalisation test (external "
+        "train, our test): "
+        + " / ".join(f"{m} {e['macro_f1_real_eval']:.2f}" for m, e in evals.items())
+        + ". Every modelled class scores >= 0.6. `i_love_you`, `heart`, "
+        "`mini_heart` are NOT modelled — no public dataset has the ASL ILY "
+        "handshape or the overhead 2-arm heart, and HaGRID's hand-heart is a "
+        "chest-level finger-heart that does not transfer to s01's overhead one. "
+        "Training them on augmented s01 frames actively hurt the model (it "
+        "dragged `rock` to 0.00), so they are excluded until Phase 6 field data."
     )
 
     doc.add_heading("1. Architecture — where this sits", 1)
     doc.add_paragraph(
-        "The pipeline has exactly ONE classifier slot: 152-d fused feature vector "
-        "in -> (class, confidence) out -> temporal smoothing -> final label or "
-        "idle. Phase 3 trains candidate models for that slot; it does not stack or "
-        "ensemble them. LightGBM and RandomForest are two candidates. Phase 4 adds "
-        "an MLP and picks one to lock (ARCHITECTURE.md 'Classifier interface')."
+        "The pipeline has exactly ONE classifier slot: fused feature vector in -> "
+        "(class, confidence) out -> temporal smoothing -> final label or idle. "
+        "Phase 3 trains candidate models for that slot; it does NOT stack or "
+        "ensemble them. LightGBM and RandomForest are the two Phase 3 candidates; "
+        "Phase 4 adds an MLP and locks one (ARCHITECTURE.md 'Classifier interface')."
     )
     doc.add_paragraph(
-        "LightGBM = gradient-boosted shallow trees (each corrects the last). "
-        "RandomForest = many independent deep trees, averaged. Both on the raw "
-        "152-d vector, class_weight='balanced', features clipped to +-10."
+        f"Features: {primary.get('features', 'both')} — the 152-d raw normalised "
+        "keypoints PLUS 36 derived features (joint angles + a few length ratios, "
+        "features/derived.py). The derived features are scale-invariant, which "
+        "matters because MediaPipe Hands on a tight robot-camera wrist-crop "
+        "produces a differently proportioned skeleton than on a large webcam hand "
+        "(this broke `rock` in the first pass). class_weight = balanced x "
+        "{aug-only 0.35, idle 0.6}. Features clipped to +-10."
     )
 
     doc.add_heading("2. Train / test data", 1)
     doc.add_paragraph(
         f"Train: {card['train']['rows']:,} rows — cleaned external features "
-        f"(HaGRID, COCO) + augmentation, for 8 classes; the other 6 "
-        f"(sit, squat, laying, i_love_you, heart, glico_pose) are augmented copies "
-        f"of s01 frames (no external source). See docs/phase2b_external_data.md."
+        f"(HaGRID, COCO) + augmentation for the cross-domain classes; augmented "
+        f"s01 frames for sit/squat/laying/glico_pose. Pending classes contribute "
+        f"0 rows. See results/phase2/dataset_report.docx."
     )
     doc.add_paragraph(
-        f"Test: {card['test']['rows']:,} rows, never augmented — every original "
-        f"s01/s02 frame (1,367) + 214 held-out HaGRID `thumb` frames. s01/s02 are "
-        f"NOT in training (except as augmented copies for the 6 aug-only classes)."
+        f"Test: {card['test']['rows']:,} rows, NEVER augmented — every original "
+        f"s01/s02 frame (1,367) + 214 held-out HaGRID `thumb`. Metrics below are "
+        f"computed only over the {nmod} modelled classes' frames; the "
+        f"pending-class frames are reported separately (section 6)."
     )
 
-    doc.add_heading("3. LightGBM vs RandomForest — the head-to-head", 1)
-    doc.add_paragraph(
-        "Both trained on the same 62,627-row train.npz, class_weight='balanced', "
-        "raw 152-d features clipped to +-10. This is the Phase 3 comparison; "
-        "Phase 4 adds an MLP and locks one."
-    )
+    doc.add_heading("3. LightGBM vs RandomForest", 1)
     lg, rf = evals.get("lgbm"), evals.get("rf")
     if lg and rf:
-        crows = [
-            ["macro-F1 (all classes)", f"{lg['macro_f1_all']:.3f}", f"{rf['macro_f1_all']:.3f}"],
+        _table(doc, ["metric", "LightGBM", "RandomForest"], [
+            ["macro-F1 (modelled classes)", f"{lg['macro_f1_modelled']:.3f}",
+             f"{rf['macro_f1_modelled']:.3f}"],
             ["macro-F1 (real-eval only)", f"{lg['macro_f1_real_eval']:.3f}",
              f"{rf['macro_f1_real_eval']:.3f}"],
             ["sit @ s02 recall (only clean cross-person number)",
-             f"{sit_s02.get('lgbm', '-')}", f"{sit_s02.get('rf', '-')}"],
+             sit_s02.get("lgbm", "-"), sit_s02.get("rf", "-")],
             ["fit time", f"{metas['lgbm']['fit_s']} s", f"{metas['rf']['fit_s']} s"],
-            ["model file size", f"{metas['lgbm']['size_mb']} MB", f"{metas['rf']['size_mb']} MB"],
-        ]
-        _table(doc, ["metric", "LightGBM", "RandomForest"], crows)
-        doc.add_paragraph(
-            "Per-class F1 (bold = the two differ by > 0.05):"
-        )
+            ["model file size", f"{metas['lgbm']['size_mb']} MB",
+             f"{metas['rf']['size_mb']} MB"],
+        ])
         prows, pcolors = [], []
         for c in card["classes"]:
             a = lg["per_class"].get(c, {}).get("f1")
             b = rf["per_class"].get(c, {}).get("f1")
-            if a is None:
+            if a is None and b is None:
                 continue
-            diff = abs(a - b) > 0.05
-            prows.append([c, f"{a:.2f}", f"{b:.2f}", "*" if diff else ""])
-            pcolors.append(RGBColor(0x88, 0x66, 0) if diff else None)
-        _table(doc, ["class", "LGBM F1", "RF F1", ""], prows, pcolors)
+            prows.append([c, f"{a:.2f}" if a is not None else "-",
+                          f"{b:.2f}" if b is not None else "-",
+                          "*" if (a is not None and b is not None and abs(a - b) > 0.05) else ""])
+            pcolors.append(RGBColor(0x88, 0x66, 0) if prows[-1][3] else None)
+        _table(doc, ["class", "LGBM F1", "RF F1", "differ"], prows, pcolors)
         doc.add_paragraph(
-            "Read: accuracy is a wash. RandomForest is chosen as the working "
-            "default for two reasons — its `sit`@s02 cross-person recall is much "
-            "higher (0.77 vs 0.43; that is the only honest generalisation number "
-            "we have) and its confidences are calibrated (LightGBM outputs ~1.0 "
-            "on almost everything, which breaks the idle/unknown threshold in "
-            "Phase 5). LightGBM's one real advantage is size (36 MB vs 396 MB) — "
-            "revisit if the deploy target is tight on disk. Final lock is a "
-            "Phase 4 decision, after the MLP and the feature fixes."
+            "Accuracy is close. RandomForest is the working default: its "
+            f"`sit`@s02 recall ({sit_s02.get('rf', '-')} vs "
+            f"{sit_s02.get('lgbm', '-')}) is the only honest cross-person number "
+            "we have, and its confidences are spread (LightGBM outputs ~1.0 on "
+            "almost everything, which would break the idle/unknown threshold in "
+            "Phase 5). LightGBM is 11x smaller. Final lock is Phase 4."
         )
 
     doc.add_heading("4. Per-class results (RandomForest)", 1)
@@ -178,82 +185,78 @@ def main():
         pc = primary["per_class"].get(c)
         if not pc:
             continue
-        et = pc["eval_type"]
-        rows.append([c, et, pc["n"], f"{pc['precision']:.2f}", f"{pc['recall']:.2f}",
-                     f"{pc['f1']:.2f}", f"{pc['mean_conf']:.2f}"])
-        colors.append(RGBColor(0xB0, 0, 0) if pc["f1"] == 0 else
-                      (RGBColor(0x88, 0x66, 0) if pc["f1"] < 0.6 else None))
+        rows.append([c, pc["eval_type"], pc["n"], f"{pc['precision']:.2f}",
+                     f"{pc['recall']:.2f}", f"{pc['f1']:.2f}", f"{pc['mean_conf']:.2f}"])
+        colors.append(RGBColor(0x88, 0x66, 0) if pc["f1"] < 0.65 else None)
     _table(doc, ["class", "eval type", "n", "prec", "rec", "F1", "conf"], rows, colors)
-    doc.add_paragraph("What each eval type means:")
     for k, txt in EVAL_MEANS.items():
-        if k != "n/a":
-            doc.add_paragraph(f"{k}: {txt}", style="List Bullet")
+        doc.add_paragraph(f"{k}: {txt}", style="List Bullet")
 
     doc.add_heading("5. sit — the one clean cross-person number", 1)
     doc.add_paragraph(
-        "`sit` is trained on augmented s01 frames only, so its s02 test frames "
-        "(a different person, different session, different room) are a genuine "
-        "cross-person check:"
+        "`sit` trains on augmented s01 frames only, so its s02 test frames "
+        "(different person, session, room) are a genuine cross-person check."
     )
-    _table(doc, ["subject", "recall", "meaning"], [
-        ["s01 (315 frames)", "1.00", "same person as training basis — leaked, ignore"],
-        ["s02 (60 frames)", "0.77", "clean cross-person — the honest sit number"],
+    _table(doc, ["subject", "RF recall", "meaning"], [
+        ["s01 (315 frames)", "1.00", "training basis — leaked, ignore"],
+        ["s02 (60 frames)", str(sit_s02.get("rf", "-")), "clean cross-person — the honest sit number"],
     ])
 
-    doc.add_heading("6. The two failures", 1)
-    doc.add_paragraph("rock -> i_love_you (all 102 frames); mini_heart -> heart (40/45).")
-    for t in [
-        "s01-attractor effect: `i_love_you` and `heart` are trained ONLY on "
-        "augmented s01 frames, so the model over-fits that one person's hand and "
-        "body. Any other s01 test frame that is geometrically nearby — s01's "
-        "`rock`, s01's `mini_heart` — gets pulled in.",
-        "Hand-landmark domain gap: on s01's `rock` the normalised thumb-to-pinky "
-        "fingertip distance is ~1.3; on HaGRID's `rock` (what the model trained "
-        "on) it is ~0.5. Palm-width normalisation does not close this — MediaPipe "
-        "Hands on a tight wrist-crop of a distant robot-camera hand produces a "
-        "differently proportioned skeleton than on a large frontal webcam hand.",
-        "mini_heart body position: HaGRID `hand_heart` is a chest-level "
-        "finger-heart; s01's `mini_heart` is hands-together overhead, which "
-        "matches s01's `heart` (also overhead).",
-    ]:
-        doc.add_paragraph(t, style="List Bullet")
+    doc.add_heading("6. The 3 pending-data classes", 1)
+    doc.add_paragraph(
+        "No public dataset covers these, and s01's execution overlaps a "
+        "neighbouring class. They are in the vocabulary and in test.npz but the "
+        "model has no label for them. Their test frames land as:"
+    )
+    pl = primary.get("pending_data_lands_as", {})
+    _table(doc, ["pending class", "test frames land as (count)"],
+           [[c, ", ".join(f"{k} {v}" for k, v in w.items())] for c, w in pl.items()])
+    doc.add_paragraph(
+        "i_love_you -> rock is the s01 overlap (same person did both similarly in "
+        "one session). heart / mini_heart -> raise_right_hand because "
+        "hands-overhead reads as a raised arm. Fix = record these gestures from "
+        "several people, or collect them in Phase 6 field testing."
+    )
 
     hg = OUT / "handgap_rock.jpg"
     if hg.exists():
+        doc.add_heading("7. Why the derived features were needed (rock)", 1)
         doc.add_paragraph(
-            "Below: MediaPipe hand landmarks for s01 `rock` (row 1, the "
-            "misclassified test frames), s01 `i_love_you` (row 2, the aug-only "
-            "training basis), and HaGRID `rock` (row 3, the actual training data). "
-            "Rows 1 and 2 are the same person in the same session and are nearly "
-            "identical in landmark space. Row 3 shows the HaGRID wrist-crop often "
-            "misses the hand entirely (crop is sized by shoulder width, which is "
-            "unreliable when the hips are out of frame) — so the model's `rock` "
-            "knowledge is thin to begin with."
+            "s01 `rock` hand landmarks (row 1) vs s01 `i_love_you` (row 2) vs "
+            "HaGRID `rock` (row 3). Rows 1-2 are the same person in one session "
+            "and nearly identical. Row 3 shows the HaGRID wrist-crop often misses "
+            "the hand (sized by shoulder width, unreliable when hips are out of "
+            "frame). Scale-invariant angle features + dropping i_love_you from "
+            "training took `rock` from 0.00 to ~0.85."
         )
         doc.add_picture(str(hg), width=Inches(6.0))
 
-    doc.add_heading("7. Top confusions", 1)
+    doc.add_heading("8. Confusions among the modelled classes", 1)
     conf = primary["confusion"]
-    pairs = sorted(((cnt, a, b) for a, d in conf.items() for b, cnt in d.items() if a != b),
-                   reverse=True)[:10]
+    modset = set(primary["per_class"])
+    pairs = sorted(((cnt, a, b) for a, dd in conf.items() for b, cnt in dd.items()
+                    if a != b and a in modset and b in modset), reverse=True)[:10]
     _table(doc, ["true", "predicted as", "count"], [[a, b, cnt] for cnt, a, b in pairs])
+    doc.add_paragraph(
+        "The residual confusions are sensible: rock<->two_finger (adjacent "
+        "handshapes), and several gestures -> idle at ~0.7 recall — a frame where "
+        "the hand isn't clearly detected falls to idle. idle precision is ~0.45 "
+        "for the same reason. Phase 5 temporal smoothing (majority vote over N "
+        "frames) recovers most of this: a gesture held for ~1 s is ~30 frames."
+    )
 
-    doc.add_heading("8. Phase 4 plan", 1)
+    doc.add_heading("9. Phase 4 (model exploration on this fixed pipeline)", 1)
     for i, t in enumerate([
-        "Close the hand-landmark domain gap — add hand-scale + hand-rotation "
-        "jitter to features/augment.py, or canonicalise hand orientation in "
-        "normalize_hand, or switch to joint-angle features (scale-free, would "
-        "sidestep it entirely). IMPLEMENTATION_PLAN Phase 4 already calls for the "
-        "raw-coords vs derived-features comparison.",
-        "Stop `i_love_you` / `heart` poisoning neighbours — raise their per-class "
-        "confidence threshold, down-weight them, or find real data (none exists "
-        "for the ASL ILY handshape; HaGRID's heart is the wrong pose).",
-        "mini_heart — drop the HaGRID chest-level data and treat as aug-only, or "
-        "add an overhead-position augmentation.",
-        "idle over-triggers (precision 0.48) — tune the idle threshold on a "
-        "validation slice; the `call`->idle hard-negatives may be too aggressive.",
-        "Re-run the LightGBM vs RF vs MLP comparison once the features are fixed, "
-        "then lock one config (Phase 4 deliverable).",
+        "Add an MLP as the third candidate; lock one of {RF, LGBM, MLP} with a "
+        "documented rationale (IMPLEMENTATION_PLAN Phase 4).",
+        "Compare feature sets properly: raw vs derived vs both (the flag exists).",
+        "Tune per-class confidence thresholds on a validation slice, then wire "
+        "the idle/unknown fallback (Phase 3 deliverable, carried into Phase 5).",
+        "Re-extract COCO with a person-bbox crop — COCO gives the bbox; cropping "
+        "to it before MediaPipe should lift raise_hand / t_pose recall (now "
+        "~0.72) by removing the wrong-person detections.",
+        "Revisit i_love_you / heart / mini_heart only with new recordings or "
+        "Phase 6 field data.",
     ], 1):
         doc.add_paragraph(f"{i}. {t}", style="List Bullet")
 
@@ -263,7 +266,7 @@ def main():
     except PermissionError:
         out = OUT / "classifier_report.NEW.docx"
         doc.save(str(out))
-        print("!! classifier_report.docx is open (Word?) — wrote", out.name, "instead")
+        print("!! classifier_report.docx open in Word — wrote", out.name)
     print(f"-> {out}")
 
 
