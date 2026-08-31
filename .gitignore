@@ -29,3 +29,7 @@ __pycache__/
 /data/features_ext/
 /data/_ext_tmp/
 /classifier/models/*.joblib
+
+# team reference: example training images + contact sheets
+!/data/samples_ext/
+!/data/samples_ext/**
