@@ -1,19 +1,18 @@
-"""Phase 2 step 2: per-clip feature files -> versioned dataset + eval folds.
+"""Phase 2b: build the hybrid train/test dataset.
 
     python -m pipeline.build_dataset
 
-Writes to data/dataset/:
-  train.npz / val.npz / test.npz      subject-wise split (CLAUDE.md #5) when >=3
-                                      subjects exist; otherwise all -> train.
-  xperson_train.npz / xperson_test.npz   present when >=2 subjects overlap on a
-                                      class: hold the "extra" subject out entirely.
-                                      The only real cross-person number we can
-                                      get from this dataset.
-  dataset_card.json                   schema, backbone, aug params, per-class
-                                      counts, split method, phase-2 status.
+TRAIN comes from external datasets (data/features_ext/), cleaned + augmented.
+TEST is every original s01/s02 frame (data/features/), never augmented — a
+genuine cross-domain / cross-subject held-out set.
 
-TRAIN splits are augmented (mirror+relabel, limb-length jitter, rotation,
-dropout, coord noise - features/augment.py). Test/val never are.
+Six classes have no external data (`sit`, `laying`, `squat`, `i_love_you`,
+`heart`, `glico_pose`): train = augmented copies of the s01/s02 frames, the
+originals still go to test. That is a leaky number for those six — flagged
+`aug_only` in the card. `thumb` has no s01 data, so 15% of its external rows are
+held out as its test.
+
+Writes data/dataset/{train,test}.npz + dataset_card.json.
 """
 
 from __future__ import annotations
@@ -29,161 +28,208 @@ from features.augment import AugParams, augment_once
 from features.schema import CLASSES, FEATURE_DIM, class_index
 
 ROOT = Path(__file__).resolve().parents[1]
-FEAT_DIR = ROOT / "data" / "features"
-OUT_DIR = ROOT / "data" / "dataset"
-SEED = 20260829
-VAL_FRAC, TEST_FRAC = 0.15, 0.15
-FIELDS = ("X", "label", "subject_id", "session_id", "clip_id", "frame_idx")
+FEAT = ROOT / "data" / "features"          # our s01/s02, per clip
+FEAT_EXT = ROOT / "data" / "features_ext"  # external, per (source,class)
+OUT = ROOT / "data" / "dataset"
+SEED = 20260831
+
+# no external source -> train on augmented s01/s02, test on the originals
+AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
+# aux external labels that are really "not a target gesture"
+AUX_TO_CLASS = {"_ily_negative": "idle", "_coco_idle": "idle"}
+HANDSHAPE = {"ok", "rock", "thumb", "two_finger", "mini_heart", "_ily_negative"}
+THUMB_TEST_FRAC = 0.15
+
+# keep the class balance sane: subsample external originals to this before
+# augmenting; grow aug-only classes toward this many rows with extra copies.
+EXT_ORIG_CAP = 1400
+AUG_ONLY_TARGET = 2200
+
+# MediaPipe-33 body indices
+_NOSE, _LSHO, _RSHO, _LWRI, _RWRI = 0, 11, 12, 15, 16
 
 
-def _load_all() -> dict:
-    files = sorted(FEAT_DIR.glob("*.npz"))
-    if not files:
-        raise SystemExit("no data/features/*.npz - run pipeline.extract_features first")
-    parts = {k: [] for k in FIELDS}
-    for p in files:
-        d = np.load(p, allow_pickle=False)
-        for k in parts:
-            parts[k].append(d[k])
-    return {k: np.concatenate(v) for k, v in parts.items()}
+def _body(X):
+    return X[:, : FEATURE_DIM].reshape(len(X), -1, 2)[:, :33]
 
 
-def _subset(data: dict, mask: np.ndarray) -> tuple:
-    return tuple(data[k][mask] for k in FIELDS)
+def _clean_external(X: np.ndarray, cls: str) -> np.ndarray:
+    """Boolean keep-mask. Drops blown normalisation, missing hands on hand-shape
+    classes, and COCO pose rows whose MediaPipe keypoints don't actually show the
+    pose (COCO's own annotation often points at a different person in the frame)."""
+    keep = ~(np.abs(X[:, :151]) > 12).any(axis=1)
+    b = _body(X)
+    if cls in HANDSHAPE:
+        keep &= (X[:, 108] > 0.5) | (X[:, 151] > 0.5)
+    elif cls == "raise_right_hand":
+        keep &= b[:, _RWRI, 1] < b[:, _NOSE, 1] - 0.1
+    elif cls == "raise_left_hand":
+        keep &= b[:, _LWRI, 1] < b[:, _NOSE, 1] - 0.1
+    elif cls == "t_pose":
+        sho_y = (b[:, _LSHO, 1] + b[:, _RSHO, 1]) / 2
+        sho_w = np.abs(b[:, _LSHO, 0] - b[:, _RSHO, 0]) + 1e-6
+        keep &= (np.abs(b[:, _LWRI, 1] - sho_y) < 0.5) & (np.abs(b[:, _RWRI, 1] - sho_y) < 0.5)
+        keep &= np.abs(b[:, _LWRI, 0] - b[:, _RWRI, 0]) > 2.0 * sho_w
+    return keep
 
 
-def _split_subjects(subjects: np.ndarray) -> tuple[set, set, set]:
-    uniq = sorted(set(subjects.tolist()))
-    if len(uniq) < 3:
-        return set(uniq), set(), set()
-    rng = np.random.default_rng(SEED)
-    rng.shuffle(uniq)
-    n_test = max(1, round(len(uniq) * TEST_FRAC))
-    n_val = max(1, round(len(uniq) * VAL_FRAC))
-    return set(uniq[n_val + n_test:]), set(uniq[:n_val]), set(uniq[n_val:n_val + n_test])
+def _load_external():
+    """-> {class: (X, subject_ids, source)} after cleaning + aux remap."""
+    out: dict[str, list] = defaultdict(lambda: [[], [], []])
+    stats = {}
+    for f in sorted(FEAT_EXT.glob("*.npz")):
+        d = np.load(f, allow_pickle=False)
+        raw_cls = str(d["label"][0])
+        cls = AUX_TO_CLASS.get(raw_cls, raw_cls)
+        X = d["X"].astype(np.float32)
+        mask = _clean_external(X, raw_cls)
+        stats[f.name] = (len(X), int(mask.sum()))
+        out[cls][0].append(X[mask])
+        out[cls][1].append(d["subject_id"][mask])
+        out[cls][2].append(np.array([str(d["source"][0])] * int(mask.sum())))
+    merged = {}
+    for cls, (xs, sids, srcs) in out.items():
+        merged[cls] = (np.concatenate(xs), np.concatenate(sids), np.concatenate(srcs))
+    return merged, stats
 
 
-def _xperson_holdout(subjects: np.ndarray, labels: np.ndarray):
-    """Pick the subject to hold out for the cross-person fold: the one with the
-    fewest classes. Returns (subject, evaluable_classes) where evaluable_classes
-    are the held subject's classes that OTHER subjects also cover (so training
-    still sees them) - only those get a real cross-person score. None if no
-    subject overlaps another on any class."""
-    by_subj = defaultdict(set)
-    for s, l in zip(subjects.tolist(), labels.tolist()):
-        by_subj[s].add(l)
-    if len(by_subj) < 2:
-        return None
-    for s, classes in sorted(by_subj.items(), key=lambda kv: len(kv[1])):
-        others = set().union(*(c for k, c in by_subj.items() if k != s))
-        evaluable = sorted(classes & others)
-        if evaluable:
-            return s, evaluable
-    return None
+def _load_ours():
+    """-> {class: (X, subject, session, clip)} from our s01/s02 per-clip files."""
+    out: dict[str, list] = defaultdict(lambda: [[], [], [], []])
+    for f in sorted(FEAT.glob("*.npz")):
+        d = np.load(f, allow_pickle=False)
+        cls = str(d["label"][0])
+        out[cls][0].append(d["X"].astype(np.float32))
+        out[cls][1].append(d["subject_id"])
+        out[cls][2].append(d["session_id"])
+        out[cls][3].append(d["clip_id"])
+    return {c: tuple(np.concatenate(p) for p in parts) for c, parts in out.items()}
 
 
-def _augment(args: tuple, p: AugParams) -> tuple:
-    X, y_str, subj, sess, clip, frame = args
-    rng = np.random.default_rng(SEED + 1)
-    out = {k: [] for k in (*FIELDS, "is_augmented")}
+def _augment_rows(X, labels, p: AugParams, seed_off: int, n_copies: int, keep_orig: bool):
+    rng = np.random.default_rng(SEED + seed_off)
+    ax, ay = [], []
     for i in range(len(X)):
-        for k, val in zip(FIELDS, (X[i], y_str[i], subj[i], sess[i], clip[i], frame[i])):
-            out[k].append(val)
-        out["is_augmented"].append(False)
-        for _ in range(p.n_per_sample):
-            v, lab = augment_once(X[i], str(y_str[i]), p, rng)
-            for k, val in zip(FIELDS, (v, lab, subj[i], sess[i], clip[i], frame[i])):
-                out[k].append(val)
-            out["is_augmented"].append(True)
-    return (np.stack(out["X"]).astype(np.float32), np.array(out["label"]),
-            np.array(out["subject_id"]), np.array(out["session_id"]),
-            np.array(out["clip_id"]), np.array(out["frame_idx"], dtype=np.int32),
-            np.array(out["is_augmented"]))
+        if keep_orig:
+            ax.append(X[i]); ay.append(labels[i])
+        for _ in range(n_copies):
+            v, lab = augment_once(X[i], str(labels[i]), p, rng)
+            ax.append(v); ay.append(lab)
+    return np.stack(ax).astype(np.float32), np.array(ay)
 
 
-def _write(name: str, X, y_str, subj, sess, clip, frame, aug) -> dict:
-    y = np.array([class_index(str(l)) for l in y_str], dtype=np.int64) if len(y_str) else np.zeros(0, np.int64)
-    np.savez_compressed(
-        OUT_DIR / f"{name}.npz",
-        X=X.astype(np.float32), y=y, label=y_str,
-        subject_id=subj, session_id=sess, clip_id=clip, frame_idx=frame, is_augmented=aug,
-    )
+def _write(name, X, y_str, extra: dict):
+    y = np.array([class_index(str(l)) for l in y_str], dtype=np.int64)
+    np.savez_compressed(OUT / f"{name}.npz", X=X.astype(np.float32), y=y, label=y_str, **extra)
     counts = {c: int((y == class_index(c)).sum()) for c in CLASSES if (y == class_index(c)).any()}
-    return {"rows": int(len(X)), "subjects": sorted(set(subj.tolist())),
-            "augmented": bool(np.any(aug)), "class_counts": counts}
+    return {"rows": int(len(X)), "class_counts": counts}
 
 
 def main():
-    OUT_DIR.mkdir(parents=True, exist_ok=True)
-    for stale in OUT_DIR.glob("*.npz"):
-        stale.unlink()
-    data = _load_all()
-    assert data["X"].shape[1] == FEATURE_DIM, data["X"].shape
-    subs = sorted(set(data["subject_id"].tolist()))
+    OUT.mkdir(parents=True, exist_ok=True)
+    for old in OUT.glob("*.npz"):
+        old.unlink()
     p = AugParams()
+    ext, clean_stats = _load_external()
+    ours = _load_ours()
 
-    tr, va, te = _split_subjects(data["subject_id"])
-    valid_eval = bool(va and te)
-    print(f"subjects {subs} -> train={sorted(tr)} val={sorted(va)} test={sorted(te)}")
+    tr_X, tr_y = [], []
+    te_X, te_y, te_meta_src, te_subj = [], [], [], []
+    per_class = {}
+    rng = np.random.default_rng(SEED)
+
+    for cls in CLASSES:
+        rec = {"train_source": None, "train_rows": 0, "test_source": None,
+               "test_rows": 0, "eval_type": None}
+
+        # ---- TRAIN ----
+        if cls in ext and cls not in AUG_ONLY:
+            Xe, _, _ = ext[cls]
+            if cls == "thumb":
+                idx = rng.permutation(len(Xe))
+                n_te = int(len(Xe) * THUMB_TEST_FRAC)
+                te_idx, tr_idx = idx[:n_te], idx[n_te:]
+                Xtr = Xe[tr_idx]
+                te_X.append(Xe[te_idx]); te_y.append(np.array(["thumb"] * n_te))
+                te_meta_src.append(np.array(["hagrid_heldout"] * n_te))
+                te_subj.append(np.array(["hagrid"] * n_te))
+                rec["test_source"] = "held-out HaGRID (15%)"
+                rec["test_rows"] = n_te
+                rec["eval_type"] = "held_out_external"
+            else:
+                Xtr = Xe
+            if len(Xtr) > EXT_ORIG_CAP:  # keep class balance sane
+                Xtr = Xtr[rng.permutation(len(Xtr))[:EXT_ORIG_CAP]]
+            # scarce external classes (t_pose) get more copies to reach ~AUG_ONLY_TARGET
+            nc = max(p.n_per_sample, min(40, -(-AUG_ONLY_TARGET // max(1, len(Xtr)))))
+            aX, aY = _augment_rows(Xtr, np.array([cls] * len(Xtr)), p,
+                                   seed_off=hash(cls) % 999, n_copies=nc, keep_orig=True)
+            tr_X.append(aX); tr_y.append(aY)
+            rec["train_source"] = "external: " + "/".join(sorted(set(ext[cls][2].tolist())))
+            rec["train_rows"] = int(len(aX))
+        elif cls in AUG_ONLY and cls in ours:
+            Xo_all, subj_all = ours[cls][0], ours[cls][1]
+            # augment from s01 only when possible, so any s02 frames stay a clean
+            # cross-person test; if s01 has none (laying), fall back to all (full leak).
+            s01m = subj_all == "s01"
+            Xo = Xo_all[s01m] if s01m.any() else Xo_all
+            train_subj = "s01" if s01m.any() else "s02"
+            n_copies = min(40, max(4, -(-AUG_ONLY_TARGET // max(1, len(Xo)))))
+            aX, aY = _augment_rows(Xo, np.array([cls] * len(Xo)), p,
+                                   seed_off=hash(cls) % 999, n_copies=n_copies, keep_orig=False)
+            tr_X.append(aX); tr_y.append(aY)
+            rec["train_source"] = f"aug({train_subj}) only x{n_copies}"
+            rec["train_rows"] = int(len(aX))
+            rec["eval_type"] = "aug_only_leak"
+
+        # ---- TEST ----  (all original s01/s02 frames for this class)
+        if cls in ours:
+            Xo, subj = ours[cls][0], ours[cls][1]
+            te_X.append(Xo); te_y.append(np.array([cls] * len(Xo)))
+            te_meta_src.append(np.array(["s01/s02"] * len(Xo)))
+            te_subj.append(subj)
+            rec["test_source"] = (rec["test_source"] + " + s01/s02") if rec["test_source"] else "s01/s02"
+            rec["test_rows"] += len(Xo)
+            rec["test_subjects"] = sorted(set(subj.tolist()))
+            if rec["eval_type"] is None:
+                rec["eval_type"] = "cross_domain" if cls in ext else "n/a"
+
+        per_class[cls] = rec
+
+    trX = np.concatenate(tr_X); trY = np.concatenate(tr_y)
+    teX = np.concatenate(te_X); teY = np.concatenate(te_y)
+    teSRC = np.concatenate(te_meta_src); teSUBJ = np.concatenate(te_subj)
+
+    # shuffle train
+    sh = np.random.default_rng(SEED + 7).permutation(len(trX))
+    trX, trY = trX[sh], trY[sh]
 
     card = {
         "created": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "pose_backbone": json.loads((FEAT_DIR / "_extract_summary.json").read_text())["pose_backbone"],
         "feature_dim": FEATURE_DIM,
-        "feature_layout": "body[0:66] lh[66:108] lh_present[108] rh[109:151] rh_present[151]",
         "classes": CLASSES,
-        "n_subjects": len(subs),
-        "split_method": "by_subject" if valid_eval else "all_to_train (<3 subjects)",
-        "phase2_exit_met": valid_eval,
-        "augmentation": {"applied_to": "train splits only", **p.__dict__},
-        "splits": {},
+        "strategy": "train=external(+aug); test=original s01/s02 (+held-out HaGRID for thumb)",
+        "augmentation": {"applied_to": "train only", **p.__dict__},
+        "external_clean": {k: {"raw": v[0], "kept": v[1]} for k, v in clean_stats.items()},
+        "train": _write("train", trX, trY, {}),
+        "test": _write("test", teX, teY, {"source": teSRC, "subject_id": teSUBJ}),
+        "per_class": per_class,
+        "notes": [
+            "cross_domain classes: real generalisation number (external train, our test).",
+            "held_out_external (thumb): cross-subject within HaGRID, same webcam domain.",
+            "aug_only_leak classes: train is augmented copies of s01 frames. For `sit` "
+            "the s02 test frames ARE a clean cross-person check (aug is s01-only); for "
+            "`laying` there is no s01 so train and test are the same s02 frames (full "
+            "leak). Phase 6 field test is the real gate for all aug_only classes.",
+        ],
     }
+    (OUT / "dataset_card.json").write_text(json.dumps(card, indent=2, default=str))
 
-    # main split
-    for name, keep in (("train", tr), ("val", va), ("test", te)):
-        m = np.isin(data["subject_id"], list(keep))
-        if not m.any():
-            card["splits"][name] = {"rows": 0, "subjects": [], "augmented": False, "class_counts": {}}
-            print(f"  {name}: 0 rows")
-            continue
-        args = _subset(data, m)
-        parts = _augment(args, p) if name == "train" else (*args, np.zeros(int(m.sum()), bool))
-        card["splits"][name] = _write(name, *parts)
-        print(f"  {name}: {card['splits'][name]['rows']} rows")
-
-    # cross-person diagnostic fold
-    picked = None if valid_eval else _xperson_holdout(data["subject_id"], data["label"])
-    if picked is not None:
-        hold, evaluable = picked
-        te_mask = data["subject_id"] == hold
-        held_all = sorted(set(data["label"][te_mask].tolist()))
-        card["splits"]["xperson_test"] = _write(
-            "xperson_test", *_subset(data, te_mask), np.zeros(int(te_mask.sum()), bool))
-        card["splits"]["xperson_train"] = _write(
-            "xperson_train", *_augment(_subset(data, ~te_mask), p))
-        card["xperson_fold"] = {
-            "held_out_subject": hold,
-            "test_classes": held_all,
-            "evaluable_classes": evaluable,
-            "holdout_only_classes": sorted(set(held_all) - set(evaluable)),
-            "note": "Train on everyone else, test on the held-out subject. Score ONLY "
-                    "evaluable_classes as a real cross-person number - holdout_only_classes "
-                    "are absent from xperson_train so the model cannot predict them.",
-        }
-        print(f"  xperson: hold out {hold}; real cross-person score for {evaluable}; "
-              f"train-only: {card['xperson_fold']['holdout_only_classes']}")
-
-    if not valid_eval:
-        card["phase2_status"] = (
-            f"{len(subs)} subjects (need >=3 for a full subject-wise split). Mitigation: "
-            "limb-length jitter augmentation to widen the body-proportion distribution; "
-            "the xperson fold above for a real cross-person number on its classes; "
-            "frozen keypoint backbone + shoulder-hip normalization limit subject leakage. "
-            "Phase 6 field testing is the real generalization gate."
-        )
-
-    (OUT_DIR / "dataset_card.json").write_text(json.dumps(card, indent=2))
-    print(f"\n-> {OUT_DIR}  (phase2_exit_met={valid_eval})")
+    print(f"train {card['train']['rows']} rows, test {card['test']['rows']} rows -> {OUT}\n")
+    print(f"{'class':18s} {'eval':20s} {'train':>7s} {'test':>6s}")
+    for c in CLASSES:
+        r = per_class[c]
+        print(f"{c:18s} {str(r['eval_type'] or '-'):20s} {r['train_rows']:7d} {r['test_rows']:6d}")
 
 
 if __name__ == "__main__":
