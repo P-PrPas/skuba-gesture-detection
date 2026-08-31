@@ -20,6 +20,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 
+from features.derived import to_features
 from features.schema import CLASSES
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,21 +45,40 @@ def main():
 
     bundle = joblib.load(MODELS / f"{args.model}.joblib")
     clf, clip = bundle["clf"], bundle["clip"]
+    feat_mode = bundle.get("features", "raw")
     card = json.loads((DS / "dataset_card.json").read_text())
     per_class = card["per_class"]
 
     d = np.load(DS / "test.npz", allow_pickle=True)
-    X = np.clip(d["X"].astype(np.float32), -clip, clip)
-    y = d["y"].astype(int)
-    subj = d["subject_id"]
+    Xall = to_features(np.clip(d["X"].astype(np.float32), -clip, clip), feat_mode)
+    yall = d["y"].astype(int)
+    subjall = d["subject_id"]
+    model_classes = np.asarray(clf.classes_)          # subset of CLASSES indices
+    modelled = set(model_classes.tolist())
+
+    # pending-data classes have no label in this model — score only the frames
+    # of classes the model actually knows (feeding it i_love_you frames and
+    # penalising the result is not meaningful). Report where they land separately.
+    keep = np.isin(yall, list(modelled))
+    X, y, subj = Xall[keep], yall[keep], subjall[keep]
     proba = clf.predict_proba(X)
-    pred = proba.argmax(1)
+    pred = model_classes[proba.argmax(1)]
     conf = proba.max(1)
 
-    print(f"\n== {args.model} on test ({len(y)} rows) ==\n")
+    pend_land = {}
+    if (~keep).any():
+        pp = model_classes[clf.predict_proba(Xall[~keep]).argmax(1)]
+        for k in sorted(set(yall[~keep].tolist())):
+            u, c = np.unique(pp[yall[~keep] == k], return_counts=True)
+            pend_land[CLASSES[k]] = {CLASSES[int(a)]: int(b)
+                                     for a, b in sorted(zip(u, c), key=lambda z: -z[1])}
+
+    print(f"\n== {args.model} on test — {len(y)} rows over {len(modelled)} modelled classes ==\n")
     print(f"{'class':16s} {'eval':18s} {'n':>4s} {'prec':>5s} {'rec':>5s} {'F1':>5s} {'meanconf':>8s}")
     rows = {}
     for k, c in enumerate(CLASSES):
+        if k not in modelled:
+            continue
         m = y == k
         if not m.any():
             continue
@@ -69,11 +89,16 @@ def main():
         rows[c] = {"eval_type": et, "n": n, "precision": round(prec, 3),
                    "recall": round(rec, 3), "f1": round(f1, 3), "mean_conf": round(mc, 3)}
 
-    # headline: macro-F1 over the classes that are a real generalisation test
     real = [c for c, r in rows.items() if r["eval_type"] in ("cross_domain", "held_out_external")]
     macro_real = float(np.mean([rows[c]["f1"] for c in real]))
-    macro_all = float(np.mean([r["f1"] for r in rows.values()]))
-    print(f"\nmacro-F1  all classes: {macro_all:.3f}   real-eval only ({len(real)}): {macro_real:.3f}")
+    macro_modelled = float(np.mean([r["f1"] for r in rows.values()]))
+    macro_all = macro_modelled
+    print(f"\nmacro-F1  modelled ({len(rows)}): {macro_modelled:.3f}   "
+          f"real-eval only ({len(real)}): {macro_real:.3f}")
+    if pend_land:
+        print("\npending-data classes (no label in this model) land as:")
+        for c, w in pend_land.items():
+            print(f"  {c:14s} -> {w}")
 
     # sit: s01 (leak) vs s02 (clean cross-person)
     if "sit" in rows:
@@ -98,8 +123,11 @@ def main():
         print(f"  {a:16s} -> {b:16s} {cnt}")
 
     out = {
-        "model": args.model, "macro_f1_all": round(macro_all, 3),
-        "macro_f1_real_eval": round(macro_real, 3), "per_class": rows,
+        "model": args.model, "features": feat_mode,
+        "macro_f1_modelled": round(macro_modelled, 3),
+        "macro_f1_all": round(macro_all, 3),
+        "macro_f1_real_eval": round(macro_real, 3),
+        "pending_data_lands_as": pend_land, "per_class": rows,
         "confusion": {CLASSES[i]: {CLASSES[j]: int(cm[i, j]) for j in range(len(CLASSES)) if cm[i, j]}
                       for i in range(len(CLASSES)) if cm[i].any()},
     }

@@ -33,6 +33,16 @@ FEAT_EXT = ROOT / "data" / "features_ext"  # external, per (source,class)
 OUT = ROOT / "data" / "dataset"
 SEED = 20260831
 
+# No viable training path — kept in the class list but NOT modelled in Phase 3:
+#   i_love_you : ASL ILY handshape is in no public dataset; s01's execution
+#                overlaps s01's `rock` so training it poisons `rock` (0.00 -> 0.77
+#                when dropped). heart : the overhead 2-arm heart is in no dataset;
+#                HaGRID's hand_heart is chest-level. mini_heart : HaGRID hand_heart
+#                is chest-level, s01's is overhead — doesn't transfer.
+# Still written to test.npz so we track them; excluded from train.npz. Revisit
+# with Phase 6 field data.
+PENDING_DATA = {"i_love_you", "heart", "mini_heart"}
+
 # no external source -> train on augmented s01/s02, test on the originals
 AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
 # aux external labels that are really "not a target gesture"
@@ -143,7 +153,9 @@ def main():
                "test_rows": 0, "eval_type": None}
 
         # ---- TRAIN ----
-        if cls in ext and cls not in AUG_ONLY:
+        if cls in PENDING_DATA:
+            rec["eval_type"] = "pending_data"      # in test.npz only, never trained
+        elif cls in ext and cls not in AUG_ONLY:
             Xe, _, _ = ext[cls]
             if cls == "thumb":
                 idx = rng.permutation(len(Xe))
