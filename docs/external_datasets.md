@@ -449,3 +449,297 @@ from `ARCHITECTURE.md` applies):**
 - MPII Human Pose — https://human-pose.mpi-inf.mpg.de/
 - SCB-Dataset (classroom behavior) — https://github.com/Whiffe/SCB-dataset
 - AthleticsPose — https://arxiv.org/abs/2507.12905 ; AthletePose3D — https://arxiv.org/abs/2503.07499
+
+---
+
+## Round 2 — data for `i_love_you` / `heart` / `mini_heart`
+
+Second, focused pass (2026-08-31) on the three classes Phase 3
+(`docs/phase3_baseline.md`) left unmodelled. Task: find **training** data, or
+prove there is none, or (for `mini_heart`) decide whether the gap is fixable
+without new data.
+
+**Method note / caveat.** Roboflow Universe (`universe.roboflow.com`) returns
+HTTP 403 to the automated fetcher, and the browser tool needed an interactive
+browser pick that a background agent cannot do. Every Roboflow fact below was
+read through a text-reader proxy (`r.jina.ai`) rendering the real Roboflow
+project/search pages on 2026-08-31. Treat the *class lists* as reliable and the
+*per-class image counts* as "verify in-browser before pulling" — the numbers
+quoted are whole-dataset totals; the target class is a fraction of that
+(typically 100–500 images/class in these community sets). HaGRID / WLASL / arXiv
+facts are from primary sources as cited.
+
+### R2.0 One-paragraph verdict
+
+- **`i_love_you` — NOW HAS DATA (verdict: yes).** Round 1 said "none clean".
+  That was wrong about scope: it only checked ASL *video* corpora (WLASL/MS-ASL)
+  and *alphabet* image sets. The ASL **"I Love You" lexical sign is a static
+  one-hand handshape** (thumb+index+pinky extended) and it is a labelled class in
+  **many Roboflow Universe sign-language datasets**, as RGB webcam images we can
+  run MediaPipe on. Best single source: **`ananthu-s/asl-gvpbe`** (Roboflow,
+  *classification*, whole set ~6,130 imgs, has an `IloveYou` class, CC BY 4.0).
+  Aggregate 3–4 Roboflow sets → ~1–2k ILY images. Still supplement with HaGRID
+  `call` as the hard negative (already wired in `extract_external.py` as
+  `_ily_negative`).
+- **`heart` (big overhead two-arm heart) — STILL NO PURPOSE-BUILT DATASET
+  (verdict: no).** One thin lead: Roboflow **`shuindec/emblems-heart-detection`**
+  has a `full-arm-heart` class (356 imgs total across 5 heart classes, CC BY 4.0)
+  — unverified whether "full-arm-heart" is actually the overhead body heart.
+  Real recommendation: `heart` is a **pose-only class** (arms make the shape,
+  hand landmarks irrelevant) — treat it like `t_pose` and **mine it from COCO**
+  by adding a filter branch, plus s01 augmentation.
+- **`mini_heart` — DATA PROBLEM ALREADY SOLVED; the residual gap is body
+  position, and it is fixable WITHOUT new data (verdict: yes, with an
+  augmentation change).** HaGRIDv2 `hand_heart` + `hand_heart2` give the correct
+  handshape, and our per-hand normalization (`features/normalize.py`
+  `normalize_hand`) makes the hand-shape slice **100 % invariant to where the
+  hand sits in the frame**. The chest-vs-overhead difference lives *only* in the
+  body-pose part of the vector. Fix = an **arm-elevation augmentation** (R2.5).
+
+### R2.1 Source → class table
+
+| Source | Class(es) | Format | #samples (see caveat) | License | How to get it | MediaPipe-compatible? |
+|---|---|---|---|---|---|---|
+| Roboflow `ananthu-s/asl-gvpbe` | `i_love_you` (`IloveYou`) | RGB images, **classification** | whole set ~6,130; ILY class a fraction | CC BY 4.0 (stated on page) | Roboflow download API (free key) or "Download Dataset" curl on the page | **Yes** — frontal webcam images, run our pose+hands |
+| Roboflow `signlanguageassistant/signlanguageai` | `i_love_you` (`Iloveyou`) | RGB images, object detection | whole set ~7,060 | not shown on page — verify | Roboflow API; use the bbox to crop | Yes |
+| Roboflow `ml/…` "FSL" (Filipino SL) | `i_love_you` (`I LOVE YOU`) | RGB images, detection | whole set ~7,510 | verify | Roboflow API | Yes |
+| Roboflow `asl-auyfj/asl-detection-lvx6a` | `i_love_you` (`I Love You`) | RGB images, detection | whole set 688, 36 classes | **CC BY 4.0** (stated) | Roboflow API | Yes |
+| Roboflow `actions/actions-zqpb1`, `ece496-public-asl/…`, `indian-sign-language-detection/isl-yolov5`, `vraj-atah9/signlanguage-f0irs` | `i_love_you` | RGB images, detection | whole sets 1.4k–3.6k each | verify each | Roboflow API | Yes |
+| **HaGRID v1 `call`** | `i_love_you` **hard negative** | RGB images | (already pulled) | HaGRID BY-SA-style (§3.1) | already in `extract_external.py` | Yes |
+| **COCO 2017 train**, keypoint-filtered | `heart` (pose-only) | RGB images | unknown — est. low 100s (unverified) | annotations CC BY 4.0 | extend `extract_external.py` COCO filter | Yes (pose only; hands mostly absent, correct) |
+| Roboflow `shuindec/emblems-heart-detection` | `heart`? (`full-arm-heart`) | RGB images, detection | 356 total / 5 classes | **CC BY 4.0** (stated) | Roboflow API | Yes, if the class is really the overhead body heart — **verify visually first** |
+| MPII Human Pose (`cheerleading`/`dancing`/`aerobics` activity labels) | `heart` (pose-only, weak) | RGB images | a few hundred candidates | Simplified BSD, **non-commercial** (§3.7) | filter by activity id, then MediaPipe | Yes |
+| **HaGRIDv2 `hand_heart` + `hand_heart2`** | `mini_heart` | RGB images (+ MediaPipe-21 landmarks shipped) | ~1,800 already extracted (`extract_external.py` cap) | "variant of CC BY-SA 4.0" (repo) / paper §8 says **non-commercial research** — conflict, see R2.4 | already wired: `python -m pipeline.extract_external hagrid_v2_heart` | **Yes** — HaGRIDv2 even ships MediaPipe 21-kpt hand landmarks |
+| Roboflow finger-heart sets (`hand-gesture-rvwhe/hand-gesture-mebty` 295 imgs w/ `Finger Heart`; `annotation-duabw/my-first-project-av9ug` 88; others) | `mini_heart` (extra position variety) | RGB images, detection | ~30–300 each | mostly CC BY 4.0 | Roboflow API | Yes — but low volume; not needed if R2.5 augmentation is done |
+
+### R2.2 `i_love_you` — detail
+
+**The Round-1 gap was a scoping error.** Round 1 checked WLASL and MS-ASL (video,
+YouTube-hosted, research-licensed) and the alphabet image sets (A–Z only). It did
+not check the large population of **community sign-language object-detection /
+classification datasets** on Roboflow, which routinely include the common
+"survival signs" (`hello`, `yes`, `no`, `thanks`, `please`, `I love you`) as
+static handshape classes photographed on webcams.
+
+- The ASL **"I Love You"** sign = the **ILY handshape**: thumb + index + pinky
+  extended, middle + ring folded (https://en.wikipedia.org/wiki/ILY_sign). This
+  is exactly our `i_love_you` target and is distinct from `call`/shaka
+  (thumb+pinky) and `rock`/horns (index+pinky). Our derived feature set already
+  has the discriminators: `_hand_derived` computes per-finger curl for all five
+  fingers plus a thumb-tip↔pinky-tip spread angle explicitly commented "(ILY)"
+  (`features/derived.py` line ~90).
+- **WLASL** (primary source, gloss list pulled 2026-08-31 from
+  `code/I3D/preprocess/wlasl_class_list.txt`): contains `love` (gloss 561) and
+  `fall in love` (gloss 1108) — **no `i love you` / `ily` gloss**. The `love`
+  gloss = crossed-fists-over-chest sign, **not** the ILY handshape, and has only
+  **12 video instances** (`WLASL_v0.3.json`), all scraped from signing-dictionary
+  sites (handspeak, signingsavvy, aslpro, …). Dead end for our target.
+- **MS-ASL**: 1,000-gloss list starts `hello`(0) … ends `challenge`(999)
+  (https://arxiv.org/pdf/1812.01053). Could not open `MSASL_classes.json` from a
+  primary mirror (repos 404'd); not verified to contain "I love you". Even if it
+  does, it is YouTube-hosted research-licensed video — low value vs. the Roboflow
+  images.
+- **HaGRID v1 + v2**: full 34-class list re-verified from
+  `github.com/hukenovs/hagrid/blob/master/constants.py` (fetched 2026-08-31):
+  `grabbing, grip, holy, point, call, three3, timeout, xsign, hand_heart,
+  hand_heart2, little_finger, middle_finger, take_picture, dislike, fist, four,
+  like, mute, ok, one, palm, peace, peace_inverted, rock, stop, stop_inverted,
+  three, three2, two_up, two_up_inverted, three_gun, thumb_index, thumb_index2,
+  no_gesture`. **None is the ILY handshape.** The paper (arXiv:2412.01508 §… )
+  gives only *functional* descriptions ("thumb_index used for ZOOM/SWIPE",
+  "xsign = shut down system") and no finger-by-finger anatomy, but by their
+  reference figures: `thumb_index`/`thumb_index2` = thumb+index only (L / pinch),
+  `three_gun` = thumb+index+middle (finger-gun), `xsign` = crossed index fingers
+  of two hands, `holy` = two hands / prayer-ish, `point` = index only. No
+  thumb+index+pinky class. `call` (shaka) stays the best **hard negative**.
+- **Best source: Roboflow Universe.** Verified (via proxy) to carry an ILY class:
+  `ananthu-s/asl-gvpbe` (classification, CC BY 4.0, ~6.1k imgs),
+  `asl-auyfj/asl-detection-lvx6a` (detection, CC BY 4.0, 688 imgs / 36 classes,
+  class literally named "I Love You"), `signlanguageassistant/signlanguageai`
+  (~7k), `ml/FSL`, `actions/actions-zqpb1`, `ece496-public-asl/ece496-public-asl`,
+  `indian-sign-language-detection/isl-yolov5`, `vraj-atah9/signlanguage-f0irs`.
+  These are frontal webcam RGB → straight into our pipeline. Domain gap same as
+  HaGRID (frontal, eye-level, hand large) — the same mitigation applies
+  (wrist-anchored crop + hand-local normalization + rotation/scale aug).
+- **Still to verify in-browser (needs the human):** exact per-class ILY image
+  counts and per-dataset licences for the sets marked "verify". The two
+  CC BY 4.0-confirmed sets alone (`asl-gvpbe`, `asl-detection-lvx6a`) are enough
+  to move `i_love_you` from unmodelled to trained.
+
+### R2.3 `heart` (overhead two-arm heart) — detail
+
+- **No purpose-built dataset.** Re-confirmed: Roboflow "heart" classes are almost
+  all hand/finger hearts at chest level, or heart-shaped objects, or "heart"
+  face-shape, or cardiac imaging. The one lead is
+  `shuindec/emblems-heart-detection` (CC BY 4.0, 356 imgs, classes
+  `2-finger-heart, full-arm-heart, traditional-heart, traditional-heart-2,
+  upside_down_heart`). `full-arm-heart` *might* be the overhead body heart —
+  Roboflow's page does not define it; **inspect the sample images before
+  relying on it**. Even if good, ~50–70 images is seed-only.
+- **Recommended path: mine COCO, treat `heart` as a pose-only class.** The
+  overhead heart is defined entirely by arm geometry (both wrists above the head,
+  wrists close together near the midline, both elbows bowed outboard). Hand shape
+  is irrelevant — like `t_pose` and `raise_*_hand`, which we already mine from
+  COCO. Add a branch to `_classify_coco` in `pipeline/extract_external.py`:
+  ```python
+  # inside _classify_coco, needs kpts 0 nose,1/2 eyes,3/4 ears,5/6 sho,7/8 elb,9/10 wri
+  if ok(0, 5, 6, 7, 8, 9, 10):
+      eye_y = min(xy[1][1], xy[2][1])
+      both_overhead = lwri[1] < eye_y and rwri[1] < eye_y
+      hands_together = abs(lwri[0] - rwri[0]) < 1.1 * sho_w
+      elbows_out = lelb[0] > lsho[0] and relb[0] < rsho[0]   # elbows outboard of shoulders
+      if both_overhead and hands_together and elbows_out:
+          return "heart"
+  ```
+  **Yield: unknown, not verifiable without running the filter.** Order-of-
+  magnitude guess: overhead "hands meet above head" poses (cheer, dance, "YMCA",
+  stretching) are uncommon in COCO-train's ~260k person instances → **low
+  hundreds** of candidates, of which MediaPipe will keep maybe half. If that
+  proves too thin, fall back to s01 `heart_01/02` + the R2.5 arm-elevation
+  augmentation applied to `t_pose` / `raise_*_hand` bodies to synthesise the
+  arms-up geometry (then hand-curl left unconstrained). MPII
+  `cheerleading`/`dancing` activity-labelled images are a non-commercial
+  secondary source.
+- **`heart` vs `mini_heart` confusion risk:** both end up "hands high / near
+  midline". The separator is hand shape (heart = open/relaxed hands touching;
+  mini_heart = finger-heart handshape) — which is exactly what our per-hand
+  derived features encode, so keep both hands' `present` flags and curl features
+  in the vector for these two.
+
+### R2.4 `mini_heart` — is the chest↔overhead gap fixable without new data?
+
+**Yes.** Root-cause analysis against the actual feature code:
+
+1. `features/normalize.py::normalize_hand` centres each hand on its own wrist
+   (landmark 0) and scales by wrist→middle-MCP distance. **Every one of the 42
+   raw hand coords and all 13 per-hand derived features
+   (`features/derived.py::_hand_derived`: 5 curls, 4 spreads, 3 tip-distance
+   ratios) is therefore fully invariant to the hand's position, scale and
+   in-plane translation in the frame.** A HaGRID chest-level finger-heart and an
+   s01 overhead finger-heart produce the *same* hand slice.
+2. The chest-vs-overhead difference is confined to the **body** part of the
+   vector: the 66 normalized body coords, and 4 of the 12 body-derived features
+   — `l_elbow`/`r_elbow` angle, `l_shoulder`/`r_shoulder` angle, and the two
+   "wrist height relative to shoulders" values (`features/derived.py`
+   `_body_derived`, lines ~73–74).
+3. So the model failed on overhead `mini_heart` not because it lacks the
+   handshape, but because every HaGRID training row has *arms-down* body
+   geometry, and the classifier keyed on that.
+
+**Recommendation (do this, in priority order):**
+
+- **A. Add an arm-elevation augmentation** to `features/augment.py` and apply it
+  (with a wide angle range) to the HaGRID `hand_heart`/`hand_heart2` rows — and
+  to the Roboflow `i_love_you` rows, same chest-level problem. Mechanism, reusing
+  the existing chain machinery (`_CHAINS`, `_TIP_FOLLOWS`):
+  - pivot each arm chain `[shoulder → elbow → wrist]` about the **shoulder** by a
+    random elevation angle θ (e.g. θ ∈ [0°, +150°] measured toward "straight up")
+    so the wrist sweeps from its recorded near-hip position to above the head;
+  - translate the hand landmark-followers (`15→17,19,21` / `16→18,20,22`) rigidly
+    with their wrist, exactly as `_limb_jitter` already does;
+  - **leave the `_LH` / `_RH` slices and the `LH_PRESENT`/`RH_PRESENT` flags
+    untouched** — they are wrist-local, so the handshape rides along for free;
+  - for two-hand `hand_heart`, after elevating, translate both arms so the two
+    wrists sit close together near the head midline (that is the pose).
+  This synthesises overhead finger-hearts from chest-level data with zero new
+  recording, and is architecturally clean (it is data augmentation, not a
+  hand-written rule in the classification path — Hard Constraint #1 OK).
+- **B. Add one explicit body-frame feature: inter-wrist distance.** Because each
+  hand is normalized independently, the vector currently has **no direct measure
+  of how close the two hands are** — only implicitly via body coords. `mini_heart`
+  (hands together) vs. two separate hands is a strong, position-robust signal.
+  Add `‖pose_L_wrist(15) − pose_R_wrist(16)‖` in normalized body units to
+  `_body_derived`. Cheap, helps `mini_heart`, `heart`, `t_pose`.
+- **C. Do NOT** switch these classes to a body-position-invariant feature subset
+  (dropping body coords / wrist-height). That information legitimately separates
+  `raise_*_hand`, `t_pose`, `glico_pose` — throwing it away to help one class is
+  a bad trade. A + B keep the full vector and add coverage.
+- Roboflow finger-heart sets (R2.1) give a little real position variety but are
+  tiny (30–300 imgs); pull them only if A+B underperform in Phase 4.
+
+### R2.5 HaGRIDv2 licence (affects `mini_heart` and, if used, more)
+
+Conflicting primary statements — unchanged from §3.1, now pinned:
+
+- Repo README (fetched 2026-08-31): *"This work is licensed under a variant of
+  Creative Commons Attribution-ShareAlike 4.0 International License."*
+- HaGRIDv2 paper (arXiv:2412.01508), abstract/§8 (fetched 2026-08-31):
+  *"the dataset … [is] publicly available under the modified Creative Commons
+  CC-BY 4.0 license"* and *"We release the dataset under a public license for
+  non-commercial use in research purposes."*
+- HuggingFace mirror `testdummyvt/hagRIDv2_512px`: license field = "other",
+  points back to the repo.
+
+→ HaGRIDv2 (and therefore `hand_heart`/`hand_heart2` → `mini_heart`) carries a
+**non-commercial** statement in the paper that the repo licence text does not.
+Per `docs/phase2b_external_data.md` the project decision is that licences are not
+a blocker for the RoboCup@Home use, so this is a **record-it-and-move-on** item:
+tag every `mini_heart` row `source=hagrid_v2`, `license=non-commercial-disputed`
+so a future commercial build can be retrained without it. Roboflow sets used for
+`i_love_you` are mostly CC BY 4.0 (commercial-OK) — cleaner.
+
+### R2.6 Extraction plan — concrete `extract_external.py` changes
+
+1. **`i_love_you` via Roboflow.** Roboflow needs a (free) API key, like Kaggle
+   does — this is a new auth dependency, note it for the user. Two integration
+   options:
+   - *Preferred:* add a `"kind": "roboflow"` branch. Config entry, e.g.:
+     ```python
+     "roboflow_ily": {
+         "kind": "roboflow",
+         "projects": [   # workspace/project/version, class-of-interest
+             ("ananthu-s", "asl-gvpbe", 1, {"IloveYou": "i_love_you"}),
+             ("asl-auyfj", "asl-detection-lvx6a", 1, {"I Love You": "i_love_you"}),
+         ],
+         "max_per_class": 1500,
+     },
+     ```
+     Implementation: `pip install roboflow`; for each project
+     `rf.workspace(ws).project(p).version(v).download("coco", location=TMP)`,
+     iterate images, for detection sets crop to the ILY bbox first (falls back to
+     full image for classification sets), run `Extractor.__call__`, write rows,
+     delete the download. ~a few hundred MB per project, deleted after — fits the
+     disk-safe pattern.
+   - *Lighter:* manually download the 2 CC BY 4.0 sets once (COCO-JSON export),
+     drop the folders in `data/_ext_tmp/`, and add a `"kind": "coco_folder"`
+     reader that reuses the existing COCO image loop on a local dir. No new pip
+     dep, no API key.
+   Tag rows `source=roboflow_<project>`, `subject=roboflow_<project>_<n>` (these
+   sets have no subject ids — cross-subject purity vs s01 still holds because
+   s01 is a different domain entirely).
+2. **`heart` via COCO.** Add the `heart` branch to `_classify_coco` (R2.3 code),
+   add `"heart"` to the `classes` set in `run_coco`, and bump the candidate cap.
+   No new source, no new dep. Spot-check ≥100 auto-labelled samples — the
+   arms-overhead-hands-together filter will also catch some diving/reaching/
+   celebration poses.
+3. **`mini_heart`.** No extraction change — data is already pulled by
+   `hagrid_v2_heart`. The work is in `features/augment.py` (R2.4 A) and
+   `features/derived.py` (R2.4 B), plus wiring those classes back into
+   `pipeline/build_dataset.py` `train.npz` (Phase 3 had excluded all three).
+
+### R2.7 "Still nothing" list
+
+- **`heart` (overhead two-arm)** — no purpose-built dataset exists anywhere
+  (re-confirmed). It is now *seedable* from COCO pose-filtering (unverified
+  yield) + the unverified `emblems-heart-detection/full-arm-heart` class +
+  s01 augmentation, but there is no clean, sized, ready dataset. Lowest
+  confidence of the three; Phase 6 field data still matters most here.
+- Everything else has a path: `i_love_you` → Roboflow (real images, mostly
+  CC BY 4.0), `mini_heart` → HaGRIDv2 + arm-elevation augmentation (no new data).
+
+### R2.8 Round-2 sources
+
+- ILY sign definition — https://en.wikipedia.org/wiki/ILY_sign
+- WLASL gloss list — https://github.com/dxli94/WLASL/blob/master/code/I3D/preprocess/wlasl_class_list.txt ; instances — https://github.com/dxli94/WLASL/blob/master/start_kit/WLASL_v0.3.json
+- MS-ASL paper — https://arxiv.org/pdf/1812.01053
+- HaGRID constants (34 classes) — https://github.com/hukenovs/hagrid/blob/master/constants.py
+- HaGRID README (annotations, licence) — https://github.com/hukenovs/hagrid/blob/master/README.md
+- HaGRIDv2 paper (licence §8) — https://arxiv.org/abs/2412.01508 ; https://arxiv.org/html/2412.01508v1
+- HaGRIDv2 512px mirror — https://huggingface.co/datasets/testdummyvt/hagRIDv2_512px
+- Roboflow `ananthu-s/asl-gvpbe` — https://universe.roboflow.com/ananthu-s/asl-gvpbe
+- Roboflow `asl-auyfj/asl-detection-lvx6a` — https://universe.roboflow.com/asl-auyfj/asl-detection-lvx6a
+- Roboflow `signlanguageassistant/signlanguageai` — https://universe.roboflow.com/signlanguageassistant/signlanguageai
+- Roboflow `shuindec/emblems-heart-detection` — https://universe.roboflow.com/shuindec/emblems-heart-detection
+- Roboflow `hand-gesture-rvwhe/hand-gesture-mebty` (finger heart) — https://universe.roboflow.com/hand-gesture-rvwhe/hand-gesture-mebty
+- Roboflow download API docs — https://docs.roboflow.com/universe/find-a-dataset-on-universe
+- Hand heart (gesture background) — https://en.wikipedia.org/wiki/Finger_heart
