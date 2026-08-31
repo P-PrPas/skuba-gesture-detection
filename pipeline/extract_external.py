@@ -70,10 +70,11 @@ SOURCES = {
     "coco_pose": {"kind": "coco", "max_per_class": 1500},
     "roboflow_ily": {
         "kind": "roboflow",
-        # (workspace, project, version, {roboflow_class_name: our_class})
+        # (workspace, project, version|None=latest, export_format, {rf_class: our_class})
+        # class names are matched loosely (case / spaces / _ ignored).
         "projects": [
-            ("ananthu-s", "asl-gvpbe", 1, {"IloveYou": "i_love_you"}),
-            ("asl-auyfj", "asl-detection-lvx6a", 1, {"I Love You": "i_love_you"}),
+            ("ananthu-s", "asl-gvpbe", None, "folder", {"iloveyou": "i_love_you"}),
+            ("asl-auyfj", "asl-detection-lvx6a", None, "coco", {"iloveyou": "i_love_you"}),
         ],
         "max_per_class": 1500,
     },
@@ -392,29 +393,34 @@ def run_coco(source: str = "coco_pose"):
 # "Private API Key". Set it as ROBOFLOW_API_KEY. `pip install roboflow`.
 
 
+def _norm(s: str) -> str:
+    return "".join(ch for ch in s.lower() if ch.isalnum())
+
+
 def _iter_roboflow_export(loc: Path, lmap: dict):
     """Yield (image_path, bbox_or_None, our_class) from a downloaded export,
-    handling both COCO-detection and folder-classification layouts."""
-    for split in ("train", "valid", "test"):
-        d = loc / split
+    handling both COCO-detection and folder-classification layouts. Class names
+    are matched loosely via _norm()."""
+    nmap = {_norm(k): v for k, v in lmap.items()}
+    for d in [loc, *loc.iterdir()] if loc.is_dir() else []:
         if not d.is_dir():
             continue
         annf = d / "_annotations.coco.json"
         if annf.exists():                                   # detection export
             j = json.loads(annf.read_text())
-            cats = {c["id"]: c["name"] for c in j["categories"]}
+            cats = {c["id"]: nmap.get(_norm(c["name"])) for c in j["categories"]}
             per_img: dict[int, list] = {}
             for a in j["annotations"]:
                 per_img.setdefault(a["image_id"], []).append(a)
             for im in j["images"]:
                 for a in per_img.get(im["id"], []):
-                    cls = lmap.get(cats.get(a["category_id"], ""))
+                    cls = cats.get(a["category_id"])
                     if cls:
                         yield d / im["file_name"], a["bbox"], cls
                         break
         else:                                               # classification export
             for sub in d.iterdir():
-                cls = lmap.get(sub.name) if sub.is_dir() else None
+                cls = nmap.get(_norm(sub.name)) if sub.is_dir() else None
                 if not cls:
                     continue
                 for imgf in sorted(sub.glob("*.jpg")) + sorted(sub.glob("*.png")):
@@ -438,7 +444,7 @@ def run_roboflow(source: str):
     ex = Extractor()
     sink = Sink(source, classes)
 
-    for ws, proj, ver, lmap in cfg["projects"]:
+    for ws, proj, ver, fmt, lmap in cfg["projects"]:
         tag = f"{ws}/{proj}"
         if tag in sink.done:
             continue
@@ -449,7 +455,12 @@ def run_roboflow(source: str):
         if loc.exists():
             shutil.rmtree(loc, ignore_errors=True)
         t0 = time.time()
-        rf.workspace(ws).project(proj).version(ver).download("coco", location=str(loc))
+        project = rf.workspace(ws).project(proj)
+        if ver is None:                                     # newest version
+            vlist = sorted(int(str(v).split("/")[-1]) for v in project.versions())
+            ver = vlist[-1]
+            print(f"  {tag}: using version {ver}", flush=True)
+        project.version(ver).download(fmt, location=str(loc))
         kept = 0
         for imgf, bbox, cls in _iter_roboflow_export(loc, lmap):
             if sink.counts[cls] >= cap:
