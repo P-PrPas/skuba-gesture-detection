@@ -39,7 +39,7 @@ _FINGERS = [("thumb", 1, 2, 4), ("index", 0, 5, 8), ("middle", 0, 9, 12),
 _MCP = {"thumb": 2, "index": 5, "middle": 9, "ring": 13, "pinky": 17}
 _TIP = {"thumb": 4, "index": 8, "middle": 12, "ring": 16, "pinky": 20}
 
-N_BODY_DERIVED = len(_BODY_ANGLES) + 4     # 8 angles + torso lean + 2 wrist-heights + shoulder tilt
+N_BODY_DERIVED = len(_BODY_ANGLES) + 5     # 8 angles + torso lean + 2 wrist-heights + shoulder tilt + inter-wrist dist
 N_HAND_DERIVED = 5 + 4 + 3                 # 5 curl + 4 spread + 3 ratios
 DERIVED_DIM = N_BODY_DERIVED + 2 * N_HAND_DERIVED   # 12 + 24 = 36
 
@@ -72,6 +72,10 @@ def _body_derived(X):
     out.append(b[:, 15, 1] - sho_mid[:, 1])                           # L wrist height rel shoulders
     out.append(b[:, 16, 1] - sho_mid[:, 1])                           # R wrist height
     out.append(np.arctan2(b[:, 12, 1] - b[:, 11, 1], b[:, 12, 0] - b[:, 11, 0] + _EPS))  # shoulder tilt
+    # inter-wrist distance (body units): each hand is normalised on its own wrist,
+    # so the vector otherwise has no direct "hands together" signal — separates
+    # mini_heart / heart (hands meet) from t_pose / raise_* (hands apart).
+    out.append(np.linalg.norm(b[:, 15] - b[:, 16], axis=-1))
     return np.stack(out, axis=1)
 
 

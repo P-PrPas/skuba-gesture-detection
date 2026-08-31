@@ -93,6 +93,8 @@ def main():
 
     npend = primary.get("n_pending", len(primary.get("pending_data_lands_as", {})))
     nmod = len(primary["per_class"])
+    nreal = sum(1 for r in primary["per_class"].values()
+                if r["eval_type"] in ("cross_domain", "held_out_external"))
     v = doc.add_paragraph()
     r = v.add_run(f"Result: a usable {nmod}-class baseline. {npend} classes have "
                   f"no training data and are held for Phase 6.")
@@ -102,15 +104,19 @@ def main():
     doc.add_paragraph(
         f"macro-F1 over the {nmod} modelled classes: "
         + " / ".join(f"{m} {e['macro_f1_modelled']:.2f}" for m, e in evals.items())
-        + ".  Over just the 8 that are a real generalisation test (external "
-        "train, our test): "
+        + f".  Over just the {nreal} that are a real generalisation test "
+        "(external train, our test): "
         + " / ".join(f"{m} {e['macro_f1_real_eval']:.2f}" for m, e in evals.items())
-        + ". Every modelled class scores >= 0.6. `i_love_you`, `heart`, "
-        "`mini_heart` are NOT modelled — no public dataset has the ASL ILY "
-        "handshape or the overhead 2-arm heart, and HaGRID's hand-heart is a "
-        "chest-level finger-heart that does not transfer to s01's overhead one. "
-        "Training them on augmented s01 frames actively hurt the model (it "
-        "dragged `rock` to 0.00), so they are excluded until Phase 6 field data."
+        + ". Every modelled class scores >= 0.6. `mini_heart` was recovered from "
+        "0.00 to ~0.92 F1 in this pass: HaGRIDv2's hand-heart gives the right "
+        "handshape, and because each hand is normalised on its own wrist, only "
+        "the body pose carried the chest-vs-overhead gap — an arm-elevation "
+        "augmentation (features/augment.raise_arms) closes it with no new data. "
+        "`i_love_you` and `heart` are still NOT modelled: the ASL ILY handshape "
+        "is only on Roboflow Universe (not yet pulled) and the overhead 2-arm "
+        "heart is in no dataset (a COCO-mining branch is wired, not yet run). "
+        "Training them on augmented s01 frames actively hurt the model (dragged "
+        "`rock` to 0.00), so they stay excluded until their data lands."
     )
 
     doc.add_heading("1. Architecture — where this sits", 1)
@@ -178,6 +184,17 @@ def main():
             "almost everything, which would break the idle/unknown threshold in "
             "Phase 5). LightGBM is 11x smaller. Final lock is Phase 4."
         )
+    else:
+        doc.add_paragraph(
+            "The first Phase 3 pass (12 modelled classes) compared both: LightGBM "
+            "macro-F1 0.88 vs RandomForest 0.87, but LightGBM's `sit`@s02 was "
+            "0.45 vs RF 0.68 and its confidences sat at ~1.0 on everything "
+            "(useless for the Phase 5 idle threshold) — so RF is the working "
+            "default. This pass (mini_heart added, 13 classes) re-ran RF only: "
+            "the SKUBA laptop is down to ~0.45 GB free RAM and LightGBM's "
+            "15-class histogram build swaps for 15+ min. The LGBM head-to-head "
+            "re-runs on Colab in Phase 4, where the model lock is decided anyway."
+        )
 
     doc.add_heading("4. Per-class results (RandomForest)", 1)
     rows, colors = [], []
@@ -202,20 +219,34 @@ def main():
         ["s02 (60 frames)", str(sit_s02.get("rf", "-")), "clean cross-person — the honest sit number"],
     ])
 
-    doc.add_heading("6. The 3 pending-data classes", 1)
+    doc.add_heading("6. The pending-data classes + how mini_heart was fixed", 1)
     doc.add_paragraph(
-        "No public dataset covers these, and s01's execution overlaps a "
-        "neighbouring class. They are in the vocabulary and in test.npz but the "
-        "model has no label for them. Their test frames land as:"
+        "mini_heart (previously pending) is now trained: HaGRIDv2 hand_heart "
+        "(chest-level finger-heart) + an arm-elevation augmentation that shifts "
+        "both forearms + hand points up by a shared offset, turning the "
+        "chest-level rows into overhead ones. The handshape rides along untouched "
+        "because each hand is normalised on its own wrist. A new derived feature, "
+        "inter-wrist distance in body units, gives the model a direct "
+        "hands-together signal. Result: mini_heart 0.00 -> "
+        f"{primary['per_class'].get('mini_heart', {}).get('f1', 0):.2f} F1, and "
+        "raise_right_hand improved as a side effect (cleaner arms-overhead negatives)."
+    )
+    doc.add_paragraph(
+        "i_love_you and heart still have no training data. They are in the "
+        "vocabulary and in test.npz but the model has no label for them. Their "
+        "test frames land as:"
     )
     pl = primary.get("pending_data_lands_as", {})
     _table(doc, ["pending class", "test frames land as (count)"],
            [[c, ", ".join(f"{k} {v}" for k, v in w.items())] for c, w in pl.items()])
     doc.add_paragraph(
         "i_love_you -> rock is the s01 overlap (same person did both similarly in "
-        "one session). heart / mini_heart -> raise_right_hand because "
-        "hands-overhead reads as a raised arm. Fix = record these gestures from "
-        "several people, or collect them in Phase 6 field testing."
+        "one session); the fix is real ILY images (Roboflow Universe carries the "
+        "handshape as a labelled class — see docs/external_datasets.md R2.2). "
+        "heart -> mini_heart now (it used to land on raise_right_hand) — the "
+        "model sees hands-together-overhead but has no `heart` label; the "
+        "separator when data lands is hand shape. heart is mineable from COCO "
+        "pose (R2.3) or Phase 6 field data."
     )
 
     hg = OUT / "handgap_rock.jpg"
@@ -255,8 +286,9 @@ def main():
         "Re-extract COCO with a person-bbox crop — COCO gives the bbox; cropping "
         "to it before MediaPipe should lift raise_hand / t_pose recall (now "
         "~0.72) by removing the wrong-person detections.",
-        "Revisit i_love_you / heart / mini_heart only with new recordings or "
-        "Phase 6 field data.",
+        "Pull i_love_you from Roboflow Universe (ASL ILY handshape, mostly "
+        "CC BY 4.0) and run the wired COCO heart-mining branch; retrain. Both "
+        "need a box that isn't the SKUBA laptop (Colab).",
     ], 1):
         doc.add_paragraph(f"{i}. {t}", style="List Bullet")
 

@@ -16,29 +16,41 @@ features are scale-invariant — MediaPipe Hands on a tight robot-camera wrist-c
 produces a differently proportioned skeleton than on a large webcam hand, which
 is what broke `rock` in the first pass.
 
-## 3 classes are not modelled
+## 2 classes are not modelled (was 3 — `mini_heart` is now fixed)
 
-`i_love_you`, `heart`, `mini_heart` have **no viable training path**:
-- ASL "I love you" handshape is in no public static-image dataset.
-- the overhead 2-arm `heart` is in no dataset.
-- HaGRID's `hand_heart` is a chest-level finger-heart; s01's `mini_heart` is
-  hands-together overhead — it does not transfer.
+`i_love_you`, `heart` have no viable training path yet:
+- ASL "I love you" handshape: only on Roboflow Universe (needs an API key or a
+  manual export — not pulled). See `docs/external_datasets.md` R2.2.
+- the overhead 2-arm `heart`: no dataset. A COCO-mining filter branch is wired
+  (`_classify_coco`) but not yet extracted. R2.3.
 
 Training them on augmented s01 frames dragged `rock` to 0.00 (s01's `rock` and
 `i_love_you` were performed too similarly in one session). They stay in the
 class list and in `test.npz`, excluded from training, flagged `pending_data`.
-Their test frames land as: i_love_you -> rock, heart/mini_heart -> raise_right_hand.
+Test frames land as: `i_love_you` -> rock, `heart` -> mini_heart.
 
-## Results (12 modelled classes)
+**`mini_heart` fix (Round 2, R2.4).** HaGRIDv2 `hand_heart` gives the right
+handshape; the per-hand normalisation makes the hand slice position-invariant,
+so only the *body* pose carried the chest-vs-overhead gap. Fix, no new data:
+`features/augment.raise_arms` shifts both forearms + hand points up by a shared
+`dy` (keeps the two hands together) — applied to the HaGRID rows in
+`build_dataset.py` (`ARMS_UP` set). Plus one new derived feature: inter-wrist
+distance in body units (`features/derived._body_derived`). Result:
+`mini_heart` 0.00 -> **0.92 F1** (prec 1.00 / rec 0.84), and `raise_right_hand`
+went 0.67 -> 0.82 as a bonus (the elevation aug gave the model cleaner
+arms-overhead negatives).
 
-| model | macro-F1 (12) | macro-F1 (8 real-eval) | sit@s02 (clean cross-person) | size |
+## Results (13 modelled classes)
+
+| model | macro-F1 (13) | macro-F1 (9 real-eval) | sit@s02 (clean cross-person) | size |
 |---|---|---|---|---|
-| LightGBM | **0.88** | **0.83** | 0.45 | 30 MB |
-| RandomForest | 0.87 | 0.81 | **0.68** | 306 MB |
+| RandomForest | 0.87 | 0.82 | 0.62 | ~300 MB |
+| LightGBM | _see report_ | | | 30 MB |
 
-Per class (RF): squat/laying/glico 1.00 (leak), thumb 0.97, raise_left 0.90,
-t_pose 0.88, raise_right 0.82, ok 0.78, rock 0.78, two_finger 0.74, sit 0.97
-(leak; s02 0.68), idle 0.64 (precision 0.47 — over-triggers, recall 1.0).
+Per class (RF): squat/laying/glico 1.00 (leak), thumb 0.97, **mini_heart 0.92**,
+raise_left 0.89, t_pose 0.86, raise_right 0.82, rock 0.78, two_finger 0.74,
+ok 0.77, sit 0.97 (leak; s02 0.62), idle 0.62 (precision 0.44 — over-triggers,
+recall 1.0).
 
 RandomForest is the working default: `sit`@s02 is the only honest cross-person
 number and RF gets 0.68 vs LightGBM 0.45, and RF confidences are spread

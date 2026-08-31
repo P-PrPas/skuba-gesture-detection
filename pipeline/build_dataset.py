@@ -34,14 +34,18 @@ OUT = ROOT / "data" / "dataset"
 SEED = 20260831
 
 # No viable training path — kept in the class list but NOT modelled in Phase 3:
-#   i_love_you : ASL ILY handshape is in no public dataset; s01's execution
-#                overlaps s01's `rock` so training it poisons `rock` (0.00 -> 0.77
-#                when dropped). heart : the overhead 2-arm heart is in no dataset;
-#                HaGRID's hand_heart is chest-level. mini_heart : HaGRID hand_heart
-#                is chest-level, s01's is overhead — doesn't transfer.
-# Still written to test.npz so we track them; excluded from train.npz. Revisit
-# with Phase 6 field data.
-PENDING_DATA = {"i_love_you", "heart", "mini_heart"}
+#   i_love_you : ASL ILY handshape only on Roboflow (needs an API key / manual
+#                export — not pulled yet); s01's execution overlaps s01's `rock`
+#                so aug(s01) training poisons `rock`. heart : the overhead 2-arm
+#                heart is in no dataset; COCO-mining branch is wired but not yet
+#                extracted. Still written to test.npz; excluded from train.npz.
+#   mini_heart : NOW MODELLED — HaGRIDv2 hand_heart (chest-level) + arm-elevation
+#                augmentation (features/augment.raise_arms, docs R2.4).
+PENDING_DATA = {"i_love_you", "heart"}
+
+# external data is chest-level but the class is performed overhead -> expand each
+# external row into raised-arm variants before the normal augmentation.
+ARMS_UP = {"mini_heart"}
 
 # no external source -> train on augmented s01/s02, test on the originals
 AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
@@ -116,14 +120,15 @@ def _load_ours():
     return {c: tuple(np.concatenate(p) for p in parts) for c, parts in out.items()}
 
 
-def _augment_rows(X, labels, p: AugParams, seed_off: int, n_copies: int, keep_orig: bool):
+def _augment_rows(X, labels, p: AugParams, seed_off: int, n_copies: int, keep_orig: bool,
+                  elevate: bool = False):
     rng = np.random.default_rng(SEED + seed_off)
     ax, ay = [], []
     for i in range(len(X)):
         if keep_orig:
             ax.append(X[i]); ay.append(labels[i])
         for _ in range(n_copies):
-            v, lab = augment_once(X[i], str(labels[i]), p, rng)
+            v, lab = augment_once(X[i], str(labels[i]), p, rng, elevate=elevate)
             ax.append(v); ay.append(lab)
     return np.stack(ax).astype(np.float32), np.array(ay)
 
@@ -174,10 +179,13 @@ def main():
                 Xtr = Xtr[rng.permutation(len(Xtr))[:EXT_ORIG_CAP]]
             # scarce external classes (t_pose) get more copies to reach ~AUG_ONLY_TARGET
             nc = max(p.n_per_sample, min(40, -(-AUG_ONLY_TARGET // max(1, len(Xtr)))))
+            up = cls in ARMS_UP
             aX, aY = _augment_rows(Xtr, np.array([cls] * len(Xtr)), p,
-                                   seed_off=hash(cls) % 999, n_copies=nc, keep_orig=True)
+                                   seed_off=hash(cls) % 999, n_copies=nc, keep_orig=not up,
+                                   elevate=up)
             tr_X.append(aX); tr_y.append(aY)
-            rec["train_source"] = "external: " + "/".join(sorted(set(ext[cls][2].tolist())))
+            rec["train_source"] = ("external+arm-elevation-aug: " if up else "external: ") + \
+                "/".join(sorted(set(ext[cls][2].tolist())))
             rec["train_rows"] = int(len(aX))
         elif cls in AUG_ONLY and cls in ours:
             Xo_all, subj_all = ours[cls][0], ours[cls][1]

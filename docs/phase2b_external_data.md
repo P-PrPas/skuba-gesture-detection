@@ -2,9 +2,13 @@
 
 Decision (user, 2026-08-30, RoboCup@Home context → licences are not a blocker):
 train the classifier on public datasets and keep **every original s01/s02 frame
-as test-only**. The three classes with no external data
-(`i_love_you`, `heart`, `glico_pose`) are trained on **augmented s01 frames
-only** — the original frames still go to test.
+as test-only**. Classes with no external data (`sit`, `laying`, `squat`,
+`glico_pose`) are trained on **augmented s01/s02 frames only** — the originals
+still go to test. `i_love_you` and `heart` have no viable source yet and are
+`PENDING_DATA` (in the class list + test.npz, 0 train rows — see
+`docs/external_datasets.md` Round 2). `mini_heart` was in that group through the
+first Phase 3 pass; it is now trained on HaGRIDv2 `hand_heart` + an
+arm-elevation augmentation (Round 2, R2.4).
 
 Full dataset survey + licences: `docs/external_datasets.md`.
 
@@ -19,12 +23,12 @@ Full dataset survey + licences: `docs/external_datasets.md`.
 | `squat` | Kaggle gym-workout `squat` clips (mid-rep frames) — needs `kaggle.json` | s01 `squat_01` | falls back to aug(s01) if the pull is blocked |
 | `laying` | **aug(s01... none) → aug(s02 `laying_03`) only** | s02 `laying_03` (originals) | s01 has no usable laying; joins the aug-only group |
 | `ok` | HaGRID `ok` | s01 `ok_01` | |
-| `i_love_you` | **aug(s01 `i_love_you_01`) only** + HaGRID `call` as hard negative | s01 `i_love_you_01` (originals) | no dataset has the ASL ILY handshape |
+| `i_love_you` | **not modelled yet** — `PENDING_DATA`. ASL ILY handshape is only on Roboflow Universe (needs an API key / manual export, not pulled). HaGRID `call` wired as hard negative. | s01 `i_love_you_01` (originals) | see `docs/external_datasets.md` R2.2 |
 | `rock` | HaGRID `rock` | s01 `rock_01` | |
 | `two_finger` | HaGRID `peace` (+ `peace_inverted`, `two_up`) | s01 `two_finger_01` | |
 | `thumb` | HaGRID `like` | **held-out HaGRID subjects** (s01 has zero thumb) | tag HaGRID rows by worker id, hold ~15% of subjects out |
-| `heart` | **aug(s01 `heart_01/02`) only** | s01 `heart_01/02` (originals) | HaGRID heart is chest-level, not overhead |
-| `mini_heart` | HaGRID v2 `hand_heart` + `hand_heart2` | s01 `mini_heart_01` | |
+| `heart` | **not modelled yet** — `PENDING_DATA`. No dataset for the overhead 2-arm heart; a COCO-mining filter branch is wired (`_classify_coco`) but not yet extracted. | s01 `heart_01/02` (originals) | see R2.3 |
+| `mini_heart` | HaGRID v2 `hand_heart` + `hand_heart2` **+ arm-elevation augmentation** (`features/augment.raise_arms`) — HaGRID is chest-level, s01 is overhead; the per-hand normalisation makes the handshape position-invariant so only the body needs lifting | s01 `mini_heart_01` | see R2.4 |
 | `t_pose` | COCO, filtered (both wrists ≈ shoulder height, arms extended, standing) | s01 `t_pose_01` | heuristic-labelled, spot-checked |
 | `glico_pose` | **aug(s01 `glico_pose_01`) only** | s01 `glico_pose_01` (originals) | no dataset |
 

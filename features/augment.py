@@ -39,6 +39,7 @@ class AugParams:
     coord_noise_std: float = 0.02  # gaussian, in normalized units
     limb_jitter: float = 0.15      # max +/- limb-length scale — fakes body-proportion variety
     n_per_sample: int = 4          # augmented copies per original (train only)
+    elevate_dy: tuple[float, float] = (-1.1, -0.3)  # arm-raise shift (norm units), opt-in per class
 
 
 # ---- slice helpers ----
@@ -169,10 +170,30 @@ def _limb_jitter(v: np.ndarray, amt: float, rng: np.random.Generator) -> np.ndar
     return out
 
 
+_ARM_PTS = (13, 15, 17, 19, 21, 14, 16, 18, 20, 22)  # elbow, wrist, hand pts — both arms
+
+
+def raise_arms(v: np.ndarray, dy: float) -> np.ndarray:
+    """Shift both forearms + hand points vertically by `dy` (normalised body
+    units, negative = up) so a chest-level two-hand gesture becomes overhead. A
+    shared `dy` keeps the two hands at the same separation, which is the point for
+    mini_heart / heart. Hand slices (_LH/_RH) are wrist-local so the handshape is
+    untouched (docs/external_datasets.md R2.4). ponytail: rigid vertical shift,
+    not a shoulder pivot — the upper arm stretches a little; fine for aug.
+    """
+    out = v.copy()
+    b = _xy(out, _BODY)
+    b[list(_ARM_PTS), 1] += dy
+    _set_xy(out, _BODY, b)
+    return out
+
+
 def augment_once(
-    v: np.ndarray, label: str, p: AugParams, rng: np.random.Generator
+    v: np.ndarray, label: str, p: AugParams, rng: np.random.Generator, elevate: bool = False
 ) -> tuple[np.ndarray, str]:
     out, lab = (mirror(v, label) if rng.random() < p.mirror_p else (v.copy(), label))
+    if elevate:
+        out = raise_arms(out, rng.uniform(*p.elevate_dy))
     out = _limb_jitter(out, p.limb_jitter, rng)
     out = _rotate(out, rng.uniform(-p.rot_deg, p.rot_deg))
     out = _hand_drop(out, p.hand_drop_p, rng)
@@ -217,6 +238,22 @@ def demo() -> None:
     assert np.allclose(hip0, hipj, atol=1e-6), "hip root must not move"
     assert not np.allclose(bj[15], b0[15]), "a wrist should have moved"
     assert np.allclose(j[_LH], vb[_LH]) and np.allclose(j[_RH], vb[_RH]), "hand slices untouched"
+
+    # raise_arms: wrists rise by dy, both hands move together (separation kept),
+    # shoulders and hand slices untouched
+    vr = np.zeros(FEATURE_DIM, np.float32)
+    br = _xy(vr, _BODY)
+    br[_SL] = [0.2, 0.0]; br[13] = [0.3, 0.4]; br[15] = [0.35, 0.8]
+    br[_SR] = [-0.2, 0.0]; br[14] = [-0.3, 0.4]; br[16] = [-0.25, 0.8]
+    _set_xy(vr, _BODY, br)
+    vr[_LH] = np.arange(N_HAND * 2); vr[LH_PRESENT] = 1.0
+    r = raise_arms(vr, -0.6)
+    rb = _xy(r, _BODY)
+    assert np.isclose(rb[15, 1], 0.2) and np.isclose(rb[16, 1], 0.2), "wrists shift by dy"
+    gap0 = br[15, 0] - br[16, 0]; gap1 = rb[15, 0] - rb[16, 0]
+    assert np.isclose(gap0, gap1), "hand separation preserved"
+    assert np.allclose(rb[_SL], br[_SL]) and np.allclose(rb[_SR], br[_SR]), "shoulders fixed"
+    assert np.allclose(r[_LH], vr[_LH]), "hand slice untouched by raise_arms"
     print("augment.demo OK")
 
 

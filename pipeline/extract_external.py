@@ -257,9 +257,20 @@ def _coco_kp(ann):
 def _classify_coco(xy, v) -> str | None:
     def ok(*i):
         return all(v[k] >= 1 for k in i)
-    nose, lsho, rsho, lwri, rwri, lhip, rhip = (xy[j] for j in (0, 5, 6, 9, 10, 11, 12))
+    nose, lsho, rsho, lelb, relb, lwri, rwri, lhip, rhip = (
+        xy[j] for j in (0, 5, 6, 7, 8, 9, 10, 11, 12))
+    leye, reye = xy[1], xy[2]
     sho_y = (lsho[1] + rsho[1]) / 2
     sho_w = abs(lsho[0] - rsho[0]) + 1e-6
+    if ok(0, 1, 2, 5, 6, 7, 8, 9, 10):
+        # heart: both wrists above the eyes, hands meeting near the midline, both
+        # elbows bowed outboard of the shoulders (the overhead two-arm heart).
+        eye_y = min(leye[1], reye[1])
+        overhead = lwri[1] < eye_y and rwri[1] < eye_y
+        together = abs(lwri[0] - rwri[0]) < 1.1 * sho_w
+        elbows_out = lelb[0] > lsho[0] and relb[0] < rsho[0]
+        if overhead and together and elbows_out:
+            return "heart"
     if ok(5, 6, 9, 10, 0):
         # t_pose: both wrists near shoulder height, spread wide, standing
         near = abs(lwri[1] - sho_y) < 0.35 * sho_w and abs(rwri[1] - sho_y) < 0.35 * sho_w
@@ -323,7 +334,7 @@ def run_coco(source: str = "coco_pose"):
     for c, ids in want.items():
         print(f"  candidate {c}: {len(ids)} images (capped)")
 
-    classes = {"t_pose", "raise_right_hand", "raise_left_hand", "_coco_idle"}
+    classes = {"t_pose", "raise_right_hand", "raise_left_hand", "_coco_idle", "heart"}
     ex = Extractor()
     sink = Sink(source, classes)
     # do the scarce classes first so an interrupt keeps the valuable ones
