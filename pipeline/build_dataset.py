@@ -33,14 +33,16 @@ FEAT_EXT = ROOT / "data" / "features_ext"  # external, per (source,class)
 OUT = ROOT / "data" / "dataset"
 SEED = 20260831
 
-# No viable training path yet — kept in the class list but NOT modelled:
-#   i_love_you : `pipeline.extract_external roboflow_ily` pulls the ASL ILY
-#                handshape from Roboflow (needs ROBOFLOW_API_KEY, run on Colab).
-#                Once data/features_ext/roboflow_ily__i_love_you.npz lands,
-#                remove i_love_you from PENDING_DATA + AUG_ONLY and rebuild.
+# Not modelled — in the class list + test.npz, 0 train rows:
+#   i_love_you : NOT a data gap. 606 real ILY images (roboflow_ily source, in
+#                data/features_ext/) were pulled + trained on -> recall 0.00,
+#                and rock fell 0.78 -> 0.48. MediaPipe Hands can't resolve
+#                finger extension on s01's conversational-distance crop, so
+#                i_love_you / rock / two_finger are the same vector. Reproduced
+#                backbone failure (CLAUDE.md #4). Fix = upscale the wrist crop
+#                (Phase 4) or re-record. See docs/phase3_baseline.md.
 #   heart      : `_classify_coco` heart branch is wired; re-run `coco_pose` to
 #                mine it. Yield unverified — keep pending until the count is seen.
-#   Both stay in test.npz so we track them; 0 train rows.
 #   mini_heart : NOW MODELLED — HaGRIDv2 hand_heart (chest-level) + arm-elevation
 #                augmentation (features/augment.raise_arms, docs R2.4).
 PENDING_DATA = {"i_love_you", "heart"}
@@ -183,7 +185,7 @@ def main():
             nc = max(p.n_per_sample, min(40, -(-AUG_ONLY_TARGET // max(1, len(Xtr)))))
             up = cls in ARMS_UP
             aX, aY = _augment_rows(Xtr, np.array([cls] * len(Xtr)), p,
-                                   seed_off=hash(cls) % 999, n_copies=nc, keep_orig=not up,
+                                   seed_off=class_index(cls), n_copies=nc, keep_orig=not up,
                                    elevate=up)
             tr_X.append(aX); tr_y.append(aY)
             rec["train_source"] = ("external+arm-elevation-aug: " if up else "external: ") + \
@@ -198,7 +200,7 @@ def main():
             train_subj = "s01" if s01m.any() else "s02"
             n_copies = min(40, max(4, -(-AUG_ONLY_TARGET // max(1, len(Xo)))))
             aX, aY = _augment_rows(Xo, np.array([cls] * len(Xo)), p,
-                                   seed_off=hash(cls) % 999, n_copies=n_copies, keep_orig=False)
+                                   seed_off=class_index(cls), n_copies=n_copies, keep_orig=False)
             tr_X.append(aX); tr_y.append(aY)
             rec["train_source"] = f"aug({train_subj}) only x{n_copies}"
             rec["train_rows"] = int(len(aX))

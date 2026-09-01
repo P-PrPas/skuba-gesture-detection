@@ -112,11 +112,13 @@ def main():
         "handshape, and because each hand is normalised on its own wrist, only "
         "the body pose carried the chest-vs-overhead gap — an arm-elevation "
         "augmentation (features/augment.raise_arms) closes it with no new data. "
-        "`i_love_you` and `heart` are still NOT modelled: the ASL ILY handshape "
-        "is only on Roboflow Universe (not yet pulled) and the overhead 2-arm "
-        "heart is in no dataset (a COCO-mining branch is wired, not yet run). "
-        "Training them on augmented s01 frames actively hurt the model (dragged "
-        "`rock` to 0.00), so they stay excluded until their data lands."
+        "`i_love_you` and `heart` are still NOT modelled. For `i_love_you` this "
+        "is now known to be a BACKBONE limit, not a data gap: 606 real ILY "
+        "images were pulled from 5 Roboflow ASL datasets and trained on — recall "
+        "stayed 0.00 and `rock` fell 0.78->0.48, because MediaPipe Hands on "
+        "s01's conversational-distance wrist-crop reports every finger curled "
+        "for i_love_you / rock / two_finger alike (they become the same feature "
+        "vector). `heart` has no dataset (COCO-mining branch wired, not run)."
     )
 
     doc.add_heading("1. Architecture — where this sits", 1)

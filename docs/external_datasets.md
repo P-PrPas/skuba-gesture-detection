@@ -727,6 +727,28 @@ so a future commercial build can be retrained without it. Roboflow sets used for
 - Everything else has a path: `i_love_you` → Roboflow (real images, mostly
   CC BY 4.0), `mini_heart` → HaGRIDv2 + arm-elevation augmentation (no new data).
 
+### R2.9 Outcome (2026-09-01, after implementing R2.4 + R2.6)
+
+- **`mini_heart` — FIXED.** R2.4's arm-elevation augmentation
+  (`features/augment.raise_arms`) + inter-wrist-distance derived feature:
+  0.00 → **0.92 F1** (RF, cross-domain). No new data. `raise_right_hand` also
+  rose 0.67 → 0.82. `mini_heart` removed from `PENDING_DATA`.
+- **`i_love_you` — STILL UNMODELLED, and now we know why.** The `roboflow_ily`
+  source was built and run on Colab — **606 real ILY images** from 5 Roboflow
+  ASL detection datasets (ece496-public-asl, signlanguage-f0irs, actions-zqpb1,
+  asl-detection-lvx6a, signlanguageai; `ananthu-s/asl-gvpbe` had no generated
+  version). Training on them: `i_love_you` recall **0.00** (→ `rock`), and
+  `rock` fell 0.78 → 0.48. **Root cause is the backbone, not the data**:
+  MediaPipe Hands on s01's conversational-distance wrist-crop reports all
+  fingers curled for `i_love_you` / `rock` / `two_finger` alike (measured:
+  `idxCurl` ≈ 2.7 rad for all three, straight ≈ 0.4). The three classes are the
+  same feature vector; no amount of ILY training data separates identical
+  inputs. This is the reproduced, backbone-attributable failure CLAUDE.md #4
+  asks for. Next: try upscaling the wrist crop before `hands.detect` (Phase 4,
+  preprocessing only); failing that, re-record or accept the confusion cluster.
+  The 606 rows are kept in `data/features_ext/roboflow_ily__*.npz`.
+- **`heart` — pending.** `_classify_coco` heart branch wired; not yet extracted.
+
 ### R2.8 Round-2 sources
 
 - ILY sign definition — https://en.wikipedia.org/wiki/ILY_sign
