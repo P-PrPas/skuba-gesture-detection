@@ -53,18 +53,20 @@ Phased roadmap. Each phase has a goal, concrete tasks, a deliverable, and an exi
 **Exit criterion:** baseline meets a minimum bar the team agrees on before comparing alternatives — don't tune this baseline extensively yet.
 
 **Status: DONE (2026-09-01).** RandomForest, features=both, **12 classes**
-(cut i_love_you / rock / heart) — macro-F1 0.88 / 0.82 over the 8
-real-generalisation classes, every class ≥ 0.6. Report:
+(cut i_love_you / rock / heart) — macro-F1 0.84 / **0.81 over the 10
+real-generalisation classes**, every class ≥ 0.6. Report:
 `results/phase3/classifier_report.docx`, `docs/phase3_baseline.md`.
 - Cut `i_love_you` + `rock`: MediaPipe Hands can't tell them apart from
   `two_finger` on our footage (every path tried — aug s01, 606 real Roboflow
   ILY images, two-stage tight crop). Cutting `rock` fixed `two_finger`
-  (0.72 → 0.94). Data history: `results/phase2/dataset_report.docx` §7.
+  (0.72 → 0.94), `thumb` → 1.00. Data history: `dataset_report.docx` §7.
 - Cut `heart`: no dataset; COCO-mining finds only 55 noisy candidates (§8).
-- `mini_heart` recovered 0.00 → ~0.8 via an arm-elevation augmentation
+- `mini_heart` recovered 0.00 → ~0.75 via an arm-elevation augmentation
   (`features/augment.raise_arms`) + an inter-wrist-distance feature — no new data.
-- `sit`/`squat`/`laying` still aug-only-leak — COCO `_classify_coco` posture
-  branches added, extract on Colab to de-leak (Phase 4 open item).
+- **`sit` + `laying` de-leaked from COCO** (`_classify_coco` posture branches):
+  `sit` 0.53 → **0.97 cross-person**, `laying` an honest 0.71 (was a leaked
+  1.00). `squat` reverted — COCO's squat labels are shallow crouches that
+  overlap `sit`; stays aug(s01)-only, needs a real squat dataset.
 - Per-class thresholds + idle fallback: carried into Phase 4/5.
 - LightGBM vs RF head-to-head: deferred to Colab in Phase 4 (laptop RAM).
 

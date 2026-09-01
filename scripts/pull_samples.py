@@ -37,7 +37,8 @@ HAGRID = [
      {6: "mini_heart", 7: "mini_heart"}, 34),
 ]
 COCO_CLASSES = {"t_pose": "t_pose", "raise_right_hand": "raise_right_hand",
-                "raise_left_hand": "raise_left_hand", "_coco_idle": "idle_coco"}
+                "raise_left_hand": "raise_left_hand", "_coco_idle": "idle_coco",
+                "sit": "sit", "squat": "squat", "laying": "laying"}
 _COCO_IMG = "http://images.cocodataset.org/train2017/{:012d}.jpg"
 
 

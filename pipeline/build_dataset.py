@@ -42,10 +42,10 @@ PENDING_DATA: set[str] = set()
 # external row into raised-arm variants before the normal augmentation.
 ARMS_UP = {"mini_heart"}
 
-# fallback only — used when a class has NO external source. sit/squat/laying are
-# listed so they still build if the COCO posture mine yields nothing; once
-# data/features_ext/coco_pose__{sit,squat,laying}.npz exist they take the
-# external (cross_domain) path instead.
+# fallback only — used when a class has NO external source (the external path
+# below wins whenever coco_pose__<cls>.npz etc. exist). sit + laying are mined
+# from COCO now; squat's COCO labels overlapped sit too much (see classifier/
+# train.py) so squat stays here on aug(s01); glico_pose has no dataset.
 AUG_ONLY = {"sit", "laying", "squat", "glico_pose"}
 # aux external labels that are really "not a target gesture"
 AUX_TO_CLASS = {"_ily_negative": "idle", "_coco_idle": "idle"}

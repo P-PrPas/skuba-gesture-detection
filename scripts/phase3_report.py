@@ -207,16 +207,24 @@ def main():
     for k, txt in EVAL_MEANS.items():
         doc.add_paragraph(f"{k}: {txt}", style="List Bullet")
 
-    doc.add_heading("5. sit — the one clean cross-person number", 1)
+    doc.add_heading("5. sit / squat / laying — the COCO posture mine", 1)
     doc.add_paragraph(
-        "`sit` still trains on augmented s01 frames only, so its s02 test frames "
-        "(different person, session, room) are a genuine cross-person check. This "
-        "number will change once the COCO posture mine lands (Phase 4) and `sit` "
-        "becomes a real cross-domain class."
+        "These were AUG_ONLY (train = augmented s01/s02, test = the same frames — "
+        "a leaked 0.96-1.00). _classify_coco gained sit / squat / laying branches "
+        "(spine horizontal -> laying; knee bend + hip-vs-knee height -> "
+        "sit / squat), re-verified against MediaPipe's normalized body."
     )
-    _table(doc, ["subject", "RF recall", "meaning"], [
-        ["s01 (315 frames)", "1.00", "training basis — leaked, ignore"],
-        ["s02 (60 frames)", str(sit_s02.get("rf", "-")), "clean cross-person — the honest sit number"],
+    _table(doc, ["class", "outcome"], [
+        ["sit", f"1,372 clean COCO rows. Leaked 0.96 / real 0.53 -> honest "
+                f"0.91 F1, cross-person recall {sit_s02.get('rf', '-')}. The best "
+                f"single Phase 3 improvement."],
+        ["laying", "607 clean COCO rows. Honest 0.71 (was a leaked 1.00) — misses "
+                   "are laying->sit / laying->raise_left_hand (a lying arm reads "
+                   "as raised). Phase 4/5 item."],
+        ["squat", "COCO's squat auto-labels are shallow crouches (mean knee 107 "
+                  "deg) and overlapped sit — squat F1 went to 0.01 and sit to "
+                  "0.58. Reverted: squat stays aug(s01)-only (leaked 1.00). Needs "
+                  "a real squat dataset."],
     ])
 
     doc.add_heading("6. mini_heart fixed; i_love_you / rock / heart cut", 1)

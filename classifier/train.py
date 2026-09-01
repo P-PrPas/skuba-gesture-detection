@@ -44,9 +44,10 @@ def load_split(name: str, feat_mode: str):
 #         recall is already 1.0, so trading a little of it for gesture recall
 #         and idle precision is a good deal).
 # classes whose train rows are augmented s01/s02 only -> the model should need
-# strong evidence before predicting one. Drop a class from here once it gains a
-# real external source (sit/squat/laying: when the COCO posture mine lands).
-AUG_ONLY = {"sit", "laying", "squat", "glico_pose"}
+# strong evidence before predicting one. sit + laying moved out when the COCO
+# posture mine landed (2026-09-01); squat's COCO auto-labels overlapped sit too
+# much (knee ~107deg = shallow crouch, not a deep squat) so it stays aug-only.
+AUG_ONLY = {"squat", "glico_pose"}
 WEIGHT_MULT = {c: 0.35 for c in AUG_ONLY} | {"idle": 0.6}
 
 

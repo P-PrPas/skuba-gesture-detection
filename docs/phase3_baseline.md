@@ -4,11 +4,14 @@
 `features/derived.py`. Full report: `results/phase3/classifier_report.docx`.
 
 **Status: DONE (2026-09-01).** RandomForest, `--features both`, **12 classes**,
-macro-F1 0.88 / 0.82 over the 8 real-generalisation classes, every class ≥ 0.6.
+macro-F1 0.84 / **0.81 over the 10 real-generalisation classes**, every class ≥ 0.6.
 
-Train: `data/dataset/train.npz` (~50k rows — external features + augmentation).
-Test: `data/dataset/test.npz` (~1,250 rows — original s01/s02 frames + 214
+Train: `data/dataset/train.npz` (~55k rows — external features + augmentation).
+Test: `data/dataset/test.npz` (1,254 rows — original s01/s02 frames + 214
 held-out HaGRID `thumb`, never augmented). Metrics are over the modelled classes.
+
+**`sit` and `laying` were de-leaked from COCO** — 10/12 classes now have a real
+cross-domain test number (was 8). `sit` cross-person recall jumped 0.53 → **0.97**.
 
 ## Features
 
@@ -48,13 +51,29 @@ Phase 4).
 
 | metric | value |
 |---|---|
-| macro-F1 (12) | **0.88** |
-| macro-F1 (8 real-eval: cross_domain + held_out_external) | **0.82** |
-| sit @ s02 (clean cross-person) | 0.53 (60 frames — noisy; still aug-only) |
+| macro-F1 (12) | **0.84** |
+| macro-F1 (10 real-eval: cross_domain + held_out_external) | **0.81** |
+| **sit @ s02** (clean cross-person) | **0.97** (was 0.53 when aug-only) |
 
-Per class: squat/laying/glico 1.00 (leak), **thumb 0.99**, **two_finger 0.94**,
-raise_left 0.90, t_pose 0.84, raise_right 0.77, ok 0.78, mini_heart 0.75,
-sit 0.96 (leak; s02 0.53), idle 0.61 (precision 0.43 — over-triggers, recall 1.0).
+Per class: **thumb 1.00**, **two_finger 0.97**, glico 1.00 / squat 1.00 (leak —
+still aug-only), **sit 0.91** (s02 0.97), t_pose 0.84, ok 0.78, raise_right 0.77,
+raise_left 0.76, mini_heart 0.75 (45-frame test), **laying 0.71** (prec 1.00 /
+rec 0.55 — honest cross-domain now, was a leaked 1.00), idle 0.63 (precision
+0.46 — over-triggers, recall 0.98).
+
+### sit / squat / laying — COCO posture mine
+
+`_classify_coco` gained sit/squat/laying branches (spine-horizontal → laying;
+knee-bend + hip-vs-knee height → sit/squat), re-verified in `_clean_external`.
+- **sit**: 1,372 clean COCO rows. sit went from a leaked 0.96 / real-0.53 to an
+  honest **0.91 F1, 0.97 cross-person**. The best single improvement in Phase 3.
+- **laying**: 607 clean COCO rows. Honest 0.71 (was a leaked 1.00). Misses come
+  from `laying → sit` / `laying → raise_left_hand` — a lying person's arm reads
+  as raised in un-rotated normalized coords. Phase 4/5 item.
+- **squat**: COCO's "squat" auto-labels are shallow crouches (mean knee angle
+  107°, not a deep squat) and overlapped `sit` badly — with COCO squat in,
+  `squat` F1 collapsed to 0.01 and `sit` fell to 0.58. Reverted: `squat` stays
+  aug(s01)-only (leaked 1.00). Needs a real squat dataset (NTU / gym) — Phase 6.
 
 Augmentation seeds are keyed on the class index (`build_dataset.py`) — a rebuild
 is reproducible (the old `hash(cls)` seed varied per process, ±0.03 drift).
@@ -73,11 +92,13 @@ Phase 4 reuses.
 
 Carried into Phase 4/5:
 - LightGBM vs RF head-to-head on Colab; add the MLP; lock one.
-- **de-leak sit/squat/laying** — COCO `_classify_coco` now has posture branches;
-  extract on Colab so they become `cross_domain` instead of `aug_only_leak`.
+- **`laying` 0.71** — tighten the COCO filter and/or add a "torso horizontal"
+  emphasis so a lying arm stops reading as `raise_left_hand`.
+- **`squat`** — find a real squat source (NTU A-something, a gym dataset); COCO
+  has none.
 - per-class confidence thresholds + the idle/unknown fallback (idle over-triggers,
-  precision 0.43 — several gestures fall to it at ~0.7 recall).
+  precision 0.46 — several gestures fall to it at ~0.7 recall).
 - **evaluate a hand-landmark model swap** — `ok` / `two_finger` and the cut
   `i_love_you` / `rock` are all limited by MediaPipe Hands' finger resolution on
-  distant footage; this is the biggest lever left.
+  distant footage; biggest lever left.
 - re-extract COCO with a person-bbox crop to lift raise_hand / t_pose recall.

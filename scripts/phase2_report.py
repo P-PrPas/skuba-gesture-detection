@@ -45,6 +45,7 @@ SAMPLE_ORDER = [
     ("two_finger", "HaGRID"), ("ily_negative_call", "HaGRID (shaka -> idle)"),
     ("idle_hagrid", "HaGRID no_gesture -> idle"),
     ("t_pose", "COCO"), ("raise_right_hand", "COCO"), ("raise_left_hand", "COCO"),
+    ("sit", "COCO"), ("squat", "COCO"), ("laying", "COCO"),
     ("idle_coco", "COCO -> idle"),
 ]
 
@@ -243,15 +244,22 @@ def main():
     doc.add_heading("9. Body postures — de-leaked from COCO", 1)
     doc.add_paragraph(
         "sit / squat / laying were originally AUG_ONLY (train = augmented s01/s02, "
-        "test = the same frames) only because Phase 2 spent its effort on the "
-        "hand classes. Body posture is where MediaPipe Pose is reliable and COCO "
-        "has plenty, so _classify_coco gained sit / squat / laying branches "
-        "(spine horizontal -> laying; knee-bend + hip-vs-knee height -> "
-        "sit / squat), re-verified against MediaPipe's normalized body and "
-        "spot-checked. sit and laying mine well; squat yield is lower (COCO is "
-        "photos, not a gym) and keeps aug(s01) as a fallback. glico_pose has no "
-        "dataset — stays aug-only."
+        "test = the same frames — a leaked 0.96-1.00) only because Phase 2 spent "
+        "its effort on the hand classes. Body posture is where MediaPipe Pose is "
+        "reliable and COCO has plenty, so _classify_coco gained sit / squat / "
+        "laying branches (spine horizontal -> laying; knee-bend + hip-vs-knee "
+        "height -> sit / squat), re-verified against MediaPipe's normalized body."
     )
+    _table(doc, ["class", "COCO rows (clean)", "result"], [
+        ["sit", "1,372", "leaked 0.96 / real 0.53 -> honest 0.91 F1, 0.97 "
+                "cross-person. Best single Phase 3 improvement."],
+        ["laying", "607", "honest 0.71 (was a leaked 1.00). Misses: a lying arm "
+                   "reads as raise_left_hand. Phase 4/5."],
+        ["squat", "919, but bad", "COCO 'squat' = shallow crouches (knee ~107 "
+                  "deg), overlaps sit — with it in, squat F1 -> 0.01 and sit -> "
+                  "0.58. Reverted to aug(s01)-only. Needs NTU / a gym set."],
+    ])
+    doc.add_paragraph("glico_pose has no dataset — stays aug-only.")
 
     doc.add_heading("10. Known gaps", 1)
     for t in [
