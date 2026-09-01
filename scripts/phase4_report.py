@@ -78,6 +78,49 @@ def _fig(doc, path: Path, width=6.4):
         doc.add_paragraph(f"[missing figure {path.name}]")
 
 
+def _setup_section(doc, card):
+    doc.add_heading("0. Dataset & setup", 1)
+    pc = card["per_class"]
+    aug = card.get("augmentation", {})
+    doc.add_paragraph(
+        f"Feature vector: {card['feature_dim']}-d raw (body 33×2 + left hand "
+        f"21×2 + presence flag + right hand 21×2 + presence flag) plus 37 "
+        f"scale-invariant derived features (8 body joint angles, torso lean, "
+        f"wrist heights, shoulder tilt, inter-wrist distance, per-hand finger "
+        f"curls / spreads / tip-distance ratios) = 189-d 'both'. Definitions in "
+        f"features/schema.py + features/derived.py.")
+    doc.add_paragraph(
+        f"Split (by subject / recording session, never by frame — CLAUDE.md #5): "
+        f"TRAIN {card['train']['rows']:,} rows = external public datasets "
+        f"(HaGRID, COCO, Roboflow), cleaned + augmented. VAL "
+        f"{card.get('val', {}).get('rows', 0):,} = 15 % of each external class's "
+        f"clean pre-augment rows (same domain, never augmented). TEST "
+        f"{card['test']['rows']:,} = every original s01/s02 frame — a genuine "
+        f"cross-domain / cross-subject hold-out (+ held-out HaGRID subjects for "
+        f"thumb, which has no s01/s02 clip).")
+    doc.add_paragraph(
+        f"Augmentation (train only): mirror p={aug.get('mirror_p')} with L/R "
+        f"label + slice swap, ±{aug.get('rot_deg')}° rotation, "
+        f"{aug.get('kp_dropout_frac')} keypoint dropout, {aug.get('hand_drop_p')} "
+        f"whole-hand drop, {aug.get('coord_noise_std')} coord noise, "
+        f"±{aug.get('limb_jitter')} limb-length jitter, {aug.get('n_per_sample')} "
+        f"copies/sample; mini_heart also gets an arm-elevation pass. "
+        f"features/augment.py.")
+    rows, colors = [], []
+    for c in card["classes"]:
+        r = pc.get(c, {})
+        rows.append([c, r.get("eval_type", "-"), f"{r.get('train_rows', 0):,}",
+                     r.get("val_rows", 0), r.get("test_rows", 0)])
+        colors.append(AMBER if r.get("eval_type") == "aug_only_leak" else None)
+    _table(doc, ["class", "eval type", "train", "val", "test"], rows, colors)
+    doc.add_paragraph(
+        "eval type — cross_domain: external train, our-footage test (a real "
+        "generalisation number). held_out_external (thumb): cross-subject within "
+        "HaGRID. aug_only_leak (squat, glico_pose): train is augmented copies of "
+        "the s01 frames, so the test number leaks and is NOT counted in "
+        "'real-eval'. Phase 6 field recordings are the real gate for those two.")
+
+
 def _classifier_scatter(hl, models):
     # the two torch models are stochastic — plot their 5-seed MEAN real-eval, not
     # the lucky/unlucky single seed, so the frontier is honest. tree/linear
@@ -141,12 +184,53 @@ def _semlp_section(doc):
     dec = d["decision"]
     doc.add_paragraph(dec[:1].upper() + dec[1:])
     doc.add_paragraph(
-        "Worth keeping: the gate is interpretable — it suppresses the off-hand "
-        "for one-hand gestures (raise_right → left-hand block ≈ 0.16, right-hand "
-        "≈ 0.48; raise_left the mirror), leans on the joint-angle block for "
-        "postures, and keeps that block the most open overall. This is a third "
-        "independent confirmation (with Track B's body_raw_hands_derived) that "
-        "the idle class is fragile to anything that reduces feature information.")
+        "Worth keeping: the gate is interpretable. Mean SE multiplier per "
+        "feature block, by true class on the test set (1.0 = fully kept, "
+        "0.0 = suppressed):").runs[0].bold = True
+    _se_gate_table(doc)
+    doc.add_paragraph(
+        "It suppresses the off-hand for one-hand gestures (raise_right keeps the "
+        "right-hand block far more open than the left; raise_left the mirror), "
+        "leans on the joint-angle block for whole-body postures, and keeps that "
+        "block the most open on average. So the feature blocks do carry the "
+        "signal the schema was designed around — the plain MLP already exploits "
+        "it implicitly. And this is a third independent confirmation (with Track "
+        "B's body_raw_hands_derived) that the idle class is fragile to anything "
+        "that reduces feature information.")
+
+
+def _se_gate_table(doc):
+    try:
+        import joblib
+        import numpy as np
+
+        from features.derived import to_features
+        from features.schema import CLASSES
+    except Exception:
+        return
+    p = MODELS / "semlp.joblib"
+    if not p.exists():
+        return
+    clf = joblib.load(p)["clf"]
+    if not hasattr(clf, "feature_gate"):
+        return
+    d = np.load(DS / "test.npz", allow_pickle=True)
+    X = to_features(np.clip(d["X"].astype(np.float32), -10, 10), "both")
+    y = d["y"].astype(int)
+    groups = {
+        "body xy": np.arange(0, 66),
+        "L-hand": np.r_[np.arange(66, 108), np.arange(165, 177)],
+        "R-hand": np.r_[np.arange(109, 151), np.arange(177, 189)],
+        "joint angles": np.arange(152, 165),
+    }
+    rows = []
+    for k, c in enumerate(CLASSES):
+        m = y == k
+        if not m.any():
+            continue
+        g = clf.feature_gate(X[m])
+        rows.append([c] + [f"{g[idx].mean():.2f}" for idx in groups.values()])
+    _table(doc, ["class"] + list(groups), rows)
 
 
 def _track_b(doc):
@@ -272,9 +356,12 @@ def main():
     r.font.size = Pt(12)
     r.font.color.rgb = GREEN
     doc.add_paragraph(
-        "Sections 1–4: the model-family comparison (Track C). Sections 5–7: the "
-        "feature-set (B), augmentation-strength (D) and confidence-threshold (E) "
-        "sweeps done on the locked model. Section 8: verdict.")
+        "Section 0: dataset & setup. Sections 1–4b: the model-family comparison "
+        "(Track C) + the SE-MLP follow-up. Sections 5–7: the feature-set (B), "
+        "augmentation-strength (D) and confidence-threshold (E) sweeps on the "
+        "locked model. Section 8: verdict. Section 9: Phase 5/6 handoff.")
+
+    _setup_section(doc, card)
 
     doc.add_heading("1. Headline metrics — every candidate", 1)
     rows = []
@@ -344,11 +431,27 @@ def main():
             dcolors.append(AMBER if rr["f1"] < 0.75 else None)
         _table(doc, ["class", "eval type", "n", "prec", "rec", "F1", "conf"],
                drows, dcolors)
+        conf = ev.get("top_confusions", [])[:8]
+        if conf:
+            doc.add_paragraph("Where it errs — the biggest confusion pairs on "
+                              "the test set:").runs[0].bold = True
+            _table(doc, ["true class", "predicted as", "count"],
+                   [[c["true"], c["pred"], c["count"]] for c in conf])
+            doc.add_paragraph(
+                "The pattern is recall loss, not cross-gesture mix-ups: real "
+                "gestures (raise_right_hand, ok) fall to idle, and mini_heart "
+                "falls to raise_right_hand (elevated-arm training rows). idle "
+                "itself is only over-predicted mildly. This is the "
+                "data/feature-gap signature — Track B/D/E and Phase 6.")
     for name in (f"{winner}_confusion.png", f"{winner}_calibration.png"):
         f = FIG / name
         if not f.exists():
             f = P3FIG / name
         _fig(doc, f)
+    lg = P3FIG / "lgbm_confusion.png"
+    if lg.exists():
+        doc.add_paragraph("Runner-up LightGBM, same test set (for comparison):")
+        _fig(doc, lg)
 
     _semlp_section(doc)
     _track_b(doc)
@@ -382,6 +485,28 @@ def main():
         "precision 0.62 on test) are data/feature-gap limited, not "
         "hyperparameter-limited — Phase 6 field recordings are the next real "
         "lever. Full rationale: docs/phase4_baseline.md.")
+
+    doc.add_heading("9. Handoff to Phase 5 / 6", 1)
+    for t in [
+        "Phase 5 (temporal + real-time): the classifier is per-frame. Majority "
+        "vote over N frames is what smooths the frame-level idle↔gesture "
+        "flicker that shows up in section 4's confusions — do not add per-class "
+        "reject thresholds from the val split (Track E: they do not transfer).",
+        "Phase 5 idle/unknown fallback: use MLP's max-probability with the "
+        "global 0.20 floor only (classifier/models/mlp.thresholds.json); the "
+        "real per-class thresholds wait for field confidences.",
+        "Phase 6 (field recordings) is the gate for: mini_heart (0.73 — trained "
+        "only on elevated aug), raise_*_hand (0.76 — cleaning filter keeps only "
+        "strong raises), idle precision (0.62 — real gestures read as idle), "
+        "and squat / glico_pose (aug-only, no honest test number yet).",
+        "Re-open with field data: the feature question — body_raw_hands_derived "
+        "and the SE gate both fixed mini_heart but broke idle on our current "
+        "data; more real idle footage may change that trade.",
+        "Backbone unchanged (CLAUDE.md): no evidence here that MediaPipe "
+        "Pose/Hands is the limiter. The gap is train-domain (external stills) vs "
+        "deploy-domain (robot camera).",
+    ]:
+        doc.add_paragraph(t, style="List Bullet")
 
     out = OUT / "classifier_report.docx"
     try:

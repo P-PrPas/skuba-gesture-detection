@@ -133,12 +133,17 @@ more code and a new hyperparameter. The committed `semlp` candidate is floor
 0.5, seed 0 (best variant, for the record).
 
 Kept from the experiment: (1) the gate is **interpretable** and validates the
-feature-block design — it suppresses the off-hand for one-hand gestures
-(`raise_right`: left-hand block ≈ 0.16 vs right-hand ≈ 0.48; `raise_left` the
-mirror), leans on the joint-angle block for postures, and keeps that block the
-most open overall (0.49); (2) a **third independent confirmation** (with Track B)
-that `idle` is fragile to anything that reduces feature information — the
-residual "nothing happening" class needs the whole vector to rule gestures out.
+feature-block design. On the committed floor-0.5 model (gate range 0.5–1.0), the
+per-class block gates on `test` show `raise_right_hand` keeping the right-hand
+block at 0.72 vs the left at 0.56, `raise_left_hand` the mirror (0.81 vs 0.53),
+`ok`/`two_finger` favouring the right hand (0.73–0.77 vs 0.53–0.55), and
+postures leaning on the joint-angle block (`laying` 0.83, `t_pose` 0.77). With
+the hard gate the same contrast is sharper (`raise_right` left-hand ≈ 0.16 vs
+right-hand ≈ 0.48). Either way: the feature blocks carry the signal the schema
+was designed around, and the plain MLP already uses it implicitly. (2) a
+**third independent confirmation** (with Track B) that `idle` is fragile to
+anything that reduces feature information — the residual "nothing happening"
+class needs the whole vector to rule gestures out.
 
 ## Track D — augmentation strength
 
