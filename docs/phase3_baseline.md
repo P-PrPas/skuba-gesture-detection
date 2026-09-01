@@ -19,13 +19,13 @@ Full report + figures: `results/phase3/classifier_report.docx`, `results/phase3/
 | model size | 419 MB | **31 MB** |
 | fit time | **48 s** | 327 s |
 
-**RandomForest is the working default** — its confidence separates right from
-wrong (0.77 vs 0.46, spread histogram), which is what the Phase 5 idle/unknown
-threshold needs. LightGBM piles ~80% of predictions at confidence ~1.0 (0.96
-correct / 0.72 wrong) — aggregate-calibrated but not thresholdable without Platt/
-isotonic calibration. LightGBM's 31 MB (vs RF's alarming 419 MB) and better
-`laying` keep it a Phase 4 candidate. Model lock (incl. an MLP) is a Phase 4
-decision, made with this same harness.
+**RandomForest was the Phase 3 working default** — the table above is the Phase 3
+snapshot. **Superseded in Phase 4:** re-training both on the finalised dataset
+(COCO `sit`/`laying` de-leaked + a 15% val split) flipped the result —
+**LightGBM macro-F1 0.89 / real-eval 0.87 / ECE 0.036 / 31 MB** vs RandomForest
+0.82 (its `laying` collapsed to 0.41). The Phase 3 LGBM number here was stale
+(trained before the COCO posture de-leak). See `docs/phase4_classifiers.md` and
+the Phase 4 report for the current model comparison.
 
 **Status: DONE (2026-09-01).** RandomForest, `--features both`, **12 classes**,
 macro-F1 0.84 / **0.81 over the 10 real-generalisation classes**, every class ≥ 0.6.
