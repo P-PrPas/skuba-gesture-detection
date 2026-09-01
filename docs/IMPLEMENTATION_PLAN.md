@@ -80,9 +80,11 @@ re-extraction are **cut** — the problem classes (i_love_you, rock, heart) are
 cut, time is limited, and the 12-class baseline is acceptable. Phase 4 stays on
 the classification layer + the existing feature data.
 
-### Track B — feature representation
-- Compare `raw` vs `derived` vs `both` vs `body_raw_hands_derived` (the
-  `--features` flag exists) for the leading model.
+### Track B — feature representation — DONE
+- MLP 5-seed sweep. `both` (189-d) stays the lock: real-eval 0.857 ± 0.016.
+  `body_raw_hands_derived` (105-d) fixes `mini_heart` (0.89 vs 0.78) but misses
+  the 0.86 bar (0.851 ± 0.035) and collapses `idle` on 2/5 seeds. Table in
+  `docs/phase4_baseline.md`.
 
 ### Track C — model family — mostly DONE, MLP recommended (`docs/phase4_baseline.md`)
 - `val` split added to `build_dataset.py` (15% of each external class's clean
@@ -100,24 +102,31 @@ the classification layer + the existing feature data.
 - Still to run for the chosen model: feature-set comparison (`--features
   raw|derived|both|body_raw_hands_derived`).
 
-### Track D — augmentation strength
-- Tune `AugParams` against the val split — too little underfits generalization,
-  too much washes out real class boundaries.
+### Track D — augmentation strength — DONE
+- 4 `AugParams` variants rebuilt + retrained (`AUG_OVERRIDE` /
+  `ARMS_UP_KEEP_ORIG` env hooks in `build_dataset.py`). None beat the defaults
+  on `test`; over-augmenting tanks `mini_heart` (0.73 → 0.16). Defaults kept.
 
-### Track E — per-class confidence thresholds (bridges to Phase 5)
-- Tune a per-class threshold on the val slice for the idle/unknown fallback
-  (idle currently over-triggers, precision ~0.45).
+### Track E — per-class confidence thresholds (bridges to Phase 5) — DONE
+- `classifier/thresholds.py`. Per-class val thresholds do NOT transfer to the
+  cross-domain `test` split (val confidences ~0.2 high). Only a `global_floor`
+  0.20 garbage gate is active; the idle over-trigger is Phase 5 temporal
+  voting + Phase 6 field data, not a static threshold.
 
 ### Guardrail
 - `evaluate.py` confusion matrix + per-class after **every** change; a fix for
   one class must not silently break another.
 
-**Deliverable:** one locked classifier config + `docs/phase4_baseline.md` with
-the rationale + a Phase 4 report regenerated from the harness outputs.
+**Deliverable — DONE:** locked config = **MLP, `--features both`, seed 0**
+(`classifier/models/mlp.joblib`); rationale in `docs/phase4_baseline.md`
+(Track C model comparison + Track B/D/E lever exploration). Report docx
+(`results/phase4/classifier_report.docx`) covers the model comparison; not
+regenerated for B/D/E since the pick config is unchanged.
 
-**Deliverable:** final chosen classifier configuration with documented rationale for why it beat the alternatives.
-
-**Exit criterion:** acceptable accuracy on held-out subjects (not seen during training) across all classes including `idle`, with no single class catastrophically confused with another.
+**Exit criterion:** met within the 2-subject data limit — real-eval macro-F1
+0.857 ± 0.016, `sit`@s02 (unseen person) = 1.0, no catastrophic confusion pair.
+Weak classes (`mini_heart` 0.73, `raise_*_hand` 0.76, `idle` precision 0.62 on
+test) are data/feature-gap limited; Phase 6 field recordings are the real gate.
 
 ## Phase 5 — Temporal smoothing & real-time integration
 

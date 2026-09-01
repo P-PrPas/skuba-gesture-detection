@@ -20,6 +20,7 @@ train, never augmented, for Phase 4 early stopping / calibration / thresholds.
 from __future__ import annotations
 
 import json
+import os
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -163,7 +164,11 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for old in OUT.glob("*.npz"):
         old.unlink()
-    p = AugParams()
+    # Track D: AUG_OVERRIDE='{"rot_deg":18,"elevate_dy":[-1.1,0.0]}' tunes AugParams
+    # against the val split without editing this file. Empty -> the locked defaults.
+    p = AugParams(**json.loads(os.environ.get("AUG_OVERRIDE", "{}")))
+    if isinstance(p.elevate_dy, list):        # JSON gives a list; augment wants a tuple
+        p.elevate_dy = tuple(p.elevate_dy)
     ext, clean_stats = _load_external()
     ours = _load_ours()
 
@@ -210,8 +215,11 @@ def main():
             # scarce external classes (t_pose) get more copies to reach ~AUG_ONLY_TARGET
             nc = max(p.n_per_sample, min(40, -(-AUG_ONLY_TARGET // max(1, len(Xtr)))))
             up = cls in ARMS_UP
+            # Track D: ARMS_UP_KEEP_ORIG=1 keeps the chest-level originals for
+            # elevated classes too (test/val mini_heart is not always overhead).
+            keep_orig = (not up) or os.environ.get("ARMS_UP_KEEP_ORIG") == "1"
             aX, aY = _augment_rows(Xtr, np.array([cls] * len(Xtr)), p,
-                                   seed_off=class_index(cls), n_copies=nc, keep_orig=not up,
+                                   seed_off=class_index(cls), n_copies=nc, keep_orig=keep_orig,
                                    elevate=up)
             tr_X.append(aX); tr_y.append(aY)
             rec["train_source"] = ("external+arm-elevation-aug: " if up else "external: ") + \

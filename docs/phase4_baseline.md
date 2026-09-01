@@ -81,11 +81,67 @@ Remaining Track D/E work applies to MLP: tune `AugParams` to lift `mini_heart`
 split. If Track D can't move those without hurting the confidence spread,
 re-evaluate against LightGBM + isotonic calibration.
 
-## Carried into the rest of Phase 4 / Phase 5
+## Track B — feature set (5-seed, MLP)
 
-- **Track D** — tune `AugParams` strength against the val split for the chosen
-  model (aim: lift `mini_heart` / `raise_*_hand`).
-- **Track E** — set per-class confidence thresholds on the val split for the
-  idle/unknown fallback (Phase 5 wiring).
-- Feature-set comparison (`--features raw|derived|both|body_raw_hands_derived`)
-  for the chosen model.
+`--features` sweep, mean ± sd over seeds 0–4, scored on `test`:
+
+| features | dim | macro-F1 | real-eval | acc | mini_heart | idle |
+|---|---|---|---|---|---|---|
+| **both** *(LOCK)* | 189 | **0.881 ± 0.014** | **0.857 ± 0.016** | 0.919 | 0.780 ± 0.090 | **0.768 ± 0.013** |
+| body_raw_hands_derived | 105 | 0.875 ± 0.029 | 0.851 ± 0.035 | 0.911 | **0.887 ± 0.008** | 0.590 ± 0.306 |
+
+`body_raw_hands_derived` (raw body + presence flags + all derived, no raw hand
+coords) decisively fixes `mini_heart` — the raw hand coords carry MediaPipe's
+hand-domain-gap noise and `mini_heart` is the class that reads it. But it does
+**not** clear the ≥0.86 real-eval bar, is less stable on every metric, and
+destabilises `idle`: F1 sd 0.31, collapsing to ~0.21 on 2 of 5 seeds. `idle` is
+a CLAUDE.md-mandated class — **lock stays at `both`.** The `mini_heart` signal
+is noted for a future feature-representation pass (Phase 6 field data).
+
+## Track D — augmentation strength
+
+Rebuilt the dataset under 4 `AugParams` variants (via `AUG_OVERRIDE` /
+`ARMS_UP_KEEP_ORIG` env hooks in `build_dataset.py`), retrained MLP `both`
+seed 0, scored `val` + `test`:
+
+| config | test real-eval | test mini_heart | test raise_R/L |
+|---|---|---|---|
+| **defaults** *(LOCK)* | **0.847** | **0.73** | 0.76 / 0.77 |
+| keep chest-level mini_heart originals | 0.832 | 0.66 | 0.78 / 0.69 |
+| + widen `elevate_dy` to −0.05 | 0.816 | 0.39 | 0.74 / 0.72 |
+| `n_per_sample` 4→7 | 0.788 | 0.16 | 0.69 / 0.81 |
+| gentler occlusion (`hand_drop` .10→.05, `kp_dropout` .05→.03) | 0.805 | 0.30 | 0.68 / 0.84 |
+
+**No variant beats the defaults.** More augmentation washes out class
+boundaries (plan's stated risk); `mini_heart` is especially fragile. `val`
+`mini_heart` sits at ~0.99 for every config (same-domain, uninformative) — the
+val split does not track `test` for the scarce classes. **`AugParams` defaults
+retained.**
+
+## Track E — confidence thresholds (`classifier/thresholds.py`)
+
+Per-class max-probability thresholds fit on `val` (keep 85 % of val TPs) do
+**not transfer** to `test`. `val` is the same webcam domain as train, so its
+confidences run ~0.2 higher than the cross-domain `test` frames:
+
+| split | raw macro-F1 | val-per-class gate | global 0.20 floor |
+|---|---|---|---|
+| val | 0.747 | 0.750 | 0.747 |
+| test | **0.873** | 0.754 (mini_heart → F1 0) | 0.872 |
+
+On `test`, the idle errors are real gestures misread as idle, so a
+reject-to-idle gate lowers idle precision at every threshold (0.62 → 0.54 at
+T=0.25, → 0.38 at T=0.5) while barely moving macro-F1. **Only a garbage floor
+(`global_floor` 0.20, ~1 frame affected) is active.** The frame-level flicker
+is Phase 5's temporal majority vote to fix; real per-class thresholds need
+Phase 6 field confidences. `classifier/thresholds.py` stays as the re-tuning
+harness; `classifier/models/mlp.thresholds.json` records the (inactive) val
+reference values.
+
+## Phase 4 outcome
+
+Lock unchanged: **MLP, `--features both`, seed 0** (`classifier/models/mlp.joblib`).
+Tracks B/D/E each explored a lever and each confirmed the current config is the
+one to ship. Remaining weak classes (`mini_heart` 0.73, `raise_*_hand` 0.76,
+`idle` precision 0.62 on test) are data/feature-gap limited, not
+hyperparameter-limited — Phase 6 field recordings are the next real lever.

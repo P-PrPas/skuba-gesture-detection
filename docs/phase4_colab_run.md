@@ -26,41 +26,29 @@
   deciding metric (confidence separation). Run on a real machine only if the
   lock is re-opened.
 
-## Next — Track B / D / E (a fresh session does these cleanly)
+## Track B / D / E — DONE (2026-09-01). Lock unchanged: MLP / `both` / seed 0.
 
-1. **Track B — feature set. DONE (1 seed) — `body_raw_hands_derived` wins:**
+Full tables + rationale in `docs/phase4_baseline.md`. Summary:
 
-   | features | dim | macro-F1 | real-eval | acc |
-   |---|---|---|---|---|
-   | raw | 152 | 0.872 | 0.846 | 0.914 |
-   | derived | 39 | 0.724 | 0.673 | 0.833 |
-   | both *(current lock)* | 189 | 0.872 | 0.847 | 0.915 |
-   | **body_raw_hands_derived** | **105** | **0.896** | **0.876** | 0.919 |
+1. **Track B — feature set.** 5-seed re-check of `body_raw_hands_derived`:
+   real-eval **0.851 ± 0.035** (vs `both` 0.857 ± 0.016) — below the ≥0.86 bar,
+   less stable, and `idle` F1 collapses to ~0.21 on 2/5 seeds. Kept `both`. It
+   *does* fix `mini_heart` (0.89 vs 0.78) — raw hand coords carry the hand
+   domain-gap noise — noted for a Phase 6 feature pass, not acted on now.
 
-   `body_raw_hands_derived` = raw body coords + presence flags + ALL derived
-   (drops the raw hand coords, keeps only the scale-invariant derived hand
-   features). It beats `both` by ~3 real-eval points AND is smaller — the raw
-   hand coords carry the MediaPipe hand-domain-gap noise; the derived hand
-   features are the clean signal.
+2. **Track D — augmentation strength.** 4 `AugParams` variants (env hooks
+   `AUG_OVERRIDE`, `ARMS_UP_KEEP_ORIG` added to `build_dataset.py`). None beat
+   the defaults on `test`; more augmentation tanks `mini_heart` (0.73 → 0.16).
+   `val` `mini_heart` pinned at ~0.99 for every config — val doesn't track test
+   for scarce classes. **Defaults retained.**
 
-   **Action:** re-run the 5-seed stability check with
-   `--features body_raw_hands_derived` (mirror `docs/phase4_baseline.md`'s
-   table). If the mean holds ≥ ~0.86 real-eval, switch the MLP lock to that
-   feature mode: retrain `mlp.joblib`, update `train.py` (make
-   `body_raw_hands_derived` the MLP default), regenerate the report, update
-   `docs/phase4_baseline.md`. Then also re-check LightGBM at this feature mode
-   for the record.
+3. **Track E — confidence thresholds** (`classifier/thresholds.py`). Per-class
+   val thresholds do **not** transfer to `test` (val confidences ~0.2 high,
+   same-domain). Reject-to-idle only lowers idle precision on the honest split.
+   Only a `global_floor` 0.20 garbage gate is active; real thresholds wait for
+   Phase 6 field confidences. `mlp.thresholds.json` records inactive val refs.
 
-2. **Track D — augmentation strength.** `AugParams` in `features/augment.py`.
-   MLP's weak classes are `mini_heart` (0.73) and `raise_*_hand` (0.76). Tune
-   `n_per_sample`, `rot_deg`, `coord_noise_std`, the `mini_heart` elevation
-   range, etc. against `val.npz` (not test). Re-run the harness after each
-   change — a fix for one class must not break another.
+4. Report docx NOT regenerated — pick config (MLP/`both`/seed 0) unchanged, and
+   the docx is the Track C model comparison, which B/D/E don't touch.
 
-3. **Track E — per-class confidence thresholds.** On `val.npz`, per class, find
-   the max-probability threshold below which the frame goes to `idle/unknown`.
-   Wire into the Phase 5 smoothing/fallback. `idle` currently over-triggers
-   (precision ~0.47).
-
-4. Regenerate `results/phase4/classifier_report.docx` from the harness outputs;
-   update `docs/phase4_baseline.md` if the pick config changes.
+**Phase 4 done. Next: Phase 5 (temporal smoothing + real-time pipeline).**
