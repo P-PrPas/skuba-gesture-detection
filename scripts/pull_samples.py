@@ -10,6 +10,7 @@ Small (~8 images/class); safe to run on the laptop.
 
 from __future__ import annotations
 
+import argparse
 import json
 import ssl
 import sys
@@ -18,6 +19,7 @@ import urllib.request
 from pathlib import Path
 
 import certifi
+import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -38,8 +40,13 @@ HAGRID = [
 ]
 COCO_CLASSES = {"t_pose": "t_pose", "raise_right_hand": "raise_right_hand",
                 "raise_left_hand": "raise_left_hand", "_coco_idle": "idle_coco",
-                "sit": "sit", "squat": "squat", "laying": "laying"}
+                "sit": "sit", "laying": "laying"}
 _COCO_IMG = "http://images.cocodataset.org/train2017/{:012d}.jpg"
+
+# classes trained/tested on the s01 clips (no usable external samples) -> pull
+# frames straight from data/clips/<clip>/<clip>.mp4
+CLIP_CLASSES = {"squat": "squat_01", "glico_pose": "glico_pose_01",
+                "mini_heart": "mini_heart_01", "sit": "sit_01", "laying": "laying_03"}
 
 
 def _get(url, timeout=60):
@@ -56,7 +63,30 @@ def _get(url, timeout=60):
     raise RuntimeError("unreachable")
 
 
-def _save_with_overlay(img_bytes: bytes, dst: Path):
+def _posture_ok(kp, cls: str) -> bool:
+    """Stricter than build_dataset._clean_external — for the report we want
+    unambiguous examples, not just geometrically-plausible ones."""
+    from features.normalize import normalize_body
+
+    b = normalize_body(kp.xy)[:33]
+    sho = (b[11] + b[12]) / 2
+    hip = (b[23] + b[24]) / 2
+    knee_dy = (b[25, 1] + b[26, 1]) / 2 - hip[1]           # + = knee below hip
+    ank_dy = (b[27, 1] + b[28, 1]) / 2 - (b[25, 1] + b[26, 1]) / 2  # + = ankle below knee
+    knees_level = abs(b[25, 1] - b[26, 1]) < 0.4           # both legs doing the same thing
+    spine_h = abs(sho[0] - hip[0]) > abs(sho[1] - hip[1])
+    if cls == "laying":
+        return bool(spine_h and abs(sho[0] - hip[0]) > 1.6 * abs(sho[1] - hip[1]))
+    if cls == "sit":
+        return bool(not spine_h and sho[1] < hip[1] and knees_level
+                    and -0.15 < knee_dy < 0.75 and ank_dy > 0.35)
+    if cls == "squat":
+        return bool(not spine_h and sho[1] < hip[1] and knees_level
+                    and knee_dy < 0.3 and ank_dy > 0.15)
+    return True
+
+
+def _save_with_overlay(img_bytes: bytes, dst: Path, verify_cls: str | None = None):
     import cv2
     import numpy as np
 
@@ -67,13 +97,15 @@ def _save_with_overlay(img_bytes: bytes, dst: Path):
     arr = cv2.imdecode(np.frombuffer(img_bytes, np.uint8), cv2.IMREAD_COLOR)
     if arr is None:
         return False
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    cv2.imwrite(str(dst), arr)
 
     pose = _save_with_overlay._pose
     hands = _save_with_overlay._hands
     pose.new_sequence()
     kp = pose.estimate(arr)
+    if verify_cls and (kp is None or not _posture_ok(kp, verify_cls)):
+        return False
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(dst), arr)
     ov = arr.copy()
     if kp is not None:
         for i, j in pose.edges:
@@ -128,40 +160,96 @@ def _hf_rows(repo: str, split: str, total: int, by_idx: dict, n_classes: int):
                     print(f"    img fail {e}")
 
 
-def main():
+def _frames_from_clip(clip_id: str, n: int):
+    """Evenly-spaced frames from a data/clips/<class>/<clip_id>.mp4."""
     import cv2
 
+    hits = list((ROOT / "data" / "clips").glob(f"*/{clip_id}.mp4"))
+    if not hits:
+        print(f"    no clip {clip_id}.mp4")
+        return
+    cap = cv2.VideoCapture(str(hits[0]))
+    total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT)) or 1
+    want = {int(i) for i in np.linspace(total * 0.15, total * 0.85, n)}
+    fi = 0
+    while True:
+        ok, fr = cap.read()
+        if not ok:
+            break
+        if fi in want:
+            ok2, buf = cv2.imencode(".jpg", fr)
+            if ok2:
+                yield buf.tobytes()
+        fi += 1
+    cap.release()
+
+
+def main():
     from backbone.hands import HandLandmarker
     from backbone.pose import PoseEstimator
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--only", nargs="*", help="only these output folders (skip the rest)")
+    ap.add_argument("--no-hf", action="store_true",
+                    help="skip the HuggingFace HaGRID pulls (they rate-limit / 500)")
+    args = ap.parse_args()
+    pick = set(args.only) if args.only else None
 
     _save_with_overlay._pose = PoseEstimator("mediapipe")
     _save_with_overlay._hands = HandLandmarker()
     OUT.mkdir(parents=True, exist_ok=True)
 
-    for repo, split, total, by_idx, ncl in HAGRID:
-        print(f"HaGRID {repo}")
-        counts: dict[str, int] = {}
-        for folder, img in _hf_rows(repo, split, total, by_idx, ncl):
-            counts[folder] = counts.get(folder, 0) + 1
-            _save_with_overlay(img, OUT / folder / f"{counts[folder]:02d}.jpg")
-            print(f"  {folder} {counts[folder]}")
+    if not args.no_hf and (pick is None or pick & {f for _, _, _, bi, _ in HAGRID
+                                                   for f in bi.values()}):
+        for repo, split, total, by_idx, ncl in HAGRID:
+            if pick and not (pick & set(by_idx.values())):
+                continue
+            print(f"HaGRID {repo}")
+            counts: dict[str, int] = {}
+            for folder, img in _hf_rows(repo, split, total, by_idx, ncl):
+                if pick and folder not in pick:
+                    continue
+                counts[folder] = counts.get(folder, 0) + 1
+                _save_with_overlay(img, OUT / folder / f"{counts[folder]:02d}.jpg")
+                print(f"  {folder} {counts[folder]}")
 
     # COCO by id
-    done = {}
+    done: dict[str, list[int]] = {}
     df = ROOT / "data" / "features_ext" / "coco_pose.done"
     if df.exists():
         for line in df.read_text().splitlines():
             cls, iid = line.split(":")
             done.setdefault(cls, []).append(int(iid))
+    verify = {"sit", "squat", "laying"}
     for raw_cls, folder in COCO_CLASSES.items():
-        ids = done.get(raw_cls, [])[:: max(1, len(done.get(raw_cls, [1])) // 40)][:N_PER_CLASS]
-        print(f"COCO {folder}: {len(ids)} ids")
-        for n, iid in enumerate(ids, 1):
+        if pick and folder not in pick:
+            continue
+        for f in OUT.joinpath(folder).glob("c*.jpg"):      # clear stale COCO samples
+            f.unlink()
+        pool = done.get(raw_cls, [])
+        ids = pool[:: max(1, len(pool) // 300)][:150]       # over-fetch; many rejected
+        vc = raw_cls if raw_cls in verify else None
+        print(f"COCO {folder}: trying up to {len(ids)} ids (verify={vc})")
+        k = 0
+        for iid in ids:
+            if k >= N_PER_CLASS:
+                break
             try:
-                _save_with_overlay(_get(_COCO_IMG.format(iid), 40), OUT / folder / f"{n:02d}.jpg")
-                print(f"  {folder} {n}")
+                if _save_with_overlay(_get(_COCO_IMG.format(iid), 40),
+                                      OUT / folder / f"c{k + 1:02d}.jpg", verify_cls=vc):
+                    k += 1
+                    print(f"  {folder} c{k}")
             except Exception as e:  # noqa: BLE001
                 print(f"    {iid} fail {e}")
+
+    # s01 clip frames for the classes with no external samples
+    for folder, clip_id in CLIP_CLASSES.items():
+        if pick and folder not in pick:
+            continue
+        print(f"clip {folder} <- {clip_id}")
+        for k, buf in enumerate(_frames_from_clip(clip_id, N_PER_CLASS), 1):
+            _save_with_overlay(buf, OUT / folder / f"s01_{k:02d}.jpg")
+            print(f"  {folder} s01_{k}")
 
     print(f"\n-> {OUT}")
 

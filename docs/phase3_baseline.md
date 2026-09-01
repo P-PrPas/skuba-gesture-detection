@@ -1,7 +1,31 @@
 # Phase 3 — baseline classifier
 
-`classifier/train.py` (LightGBM + RandomForest), `classifier/evaluate.py`,
-`features/derived.py`. Full report: `results/phase3/classifier_report.docx`.
+`classifier/train.py` (LightGBM + RandomForest), `classifier/evaluate.py`
+(reusable eval harness — JSON + figures + `--all` comparison), `features/derived.py`.
+Full report + figures: `results/phase3/classifier_report.docx`, `results/phase3/fig/`.
+
+## LightGBM vs RandomForest (12 classes, features=both)
+
+| metric | RandomForest | LightGBM |
+|---|---|---|
+| macro-F1 (12) | **0.84** | 0.83 |
+| macro-F1 (10 real-eval) | **0.81** | 0.80 |
+| accuracy | **0.88** | 0.87 |
+| sit @ s02 (cross-person) | 0.97 | **1.00** |
+| laying | 0.71 | **0.88** |
+| mini_heart | **0.75** | 0.57 |
+| conf when correct / wrong | 0.77 / 0.46 | 0.96 / 0.72 |
+| ECE (calibration) | 0.148 | **0.061** |
+| model size | 419 MB | **31 MB** |
+| fit time | **48 s** | 327 s |
+
+**RandomForest is the working default** — its confidence separates right from
+wrong (0.77 vs 0.46, spread histogram), which is what the Phase 5 idle/unknown
+threshold needs. LightGBM piles ~80% of predictions at confidence ~1.0 (0.96
+correct / 0.72 wrong) — aggregate-calibrated but not thresholdable without Platt/
+isotonic calibration. LightGBM's 31 MB (vs RF's alarming 419 MB) and better
+`laying` keep it a Phase 4 candidate. Model lock (incl. an MLP) is a Phase 4
+decision, made with this same harness.
 
 **Status: DONE (2026-09-01).** RandomForest, `--features both`, **12 classes**,
 macro-F1 0.84 / **0.81 over the 10 real-generalisation classes**, every class ≥ 0.6.
@@ -78,17 +102,20 @@ knee-bend + hip-vs-knee height → sit/squat), re-verified in `_clean_external`.
 Augmentation seeds are keyed on the class index (`build_dataset.py`) — a rebuild
 is reproducible (the old `hash(cls)` seed varied per process, ±0.03 drift).
 
-LightGBM was not re-run for the 12-class pass (dev laptop at ~0.45 GB free RAM).
-From the first 12-class pass RF's `sit`@s02 was 0.68 vs LightGBM 0.45 and RF
-confidences are spread (LightGBM pins ~1.0 on everything, which breaks the
-Phase 5 idle threshold). RF is the working default; the head-to-head + the
-model lock happen in Phase 4 on Colab.
+## The eval harness
+
+`classifier/evaluate.py` scores any bundle `{clf, classes, clip, features}` whose
+`clf` has `.predict_proba` + `.classes_`. `--model <m>` writes `<m>.eval.json`
+(per-class P/R/F1, macro variants, accuracy, balanced-acc, confusion matrix,
+cross-person recall, confidence-when-correct-vs-wrong, 10-bin reliability + ECE,
+size, fit time) plus `<m>_{confusion,perclass,calibration}.png`. `--all` adds
+`model_comparison.json` + `compare_{f1,overall}.png`. Every future candidate (MLP,
+another tree lib) plugs into the same bundle shape and is scored identically.
 
 ## Phase 3 status: usable baseline, pipeline ready for Phase 4
 
-12/12 classes at macro-F1 0.88, every class ≥ 0.6. The train/eval pipeline
-(features → model → per-class + cross-domain + cross-person eval) is what
-Phase 4 reuses.
+12/12 classes at macro-F1 0.84 (RF) / 0.83 (LGBM), every class ≥ 0.6. The
+train/eval pipeline (features → model → harness) is what Phase 4 reuses.
 
 Carried into Phase 4/5:
 - LightGBM vs RF head-to-head on Colab; add the MLP; lock one.

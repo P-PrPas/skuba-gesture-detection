@@ -12,6 +12,8 @@ import json
 from datetime import date
 from pathlib import Path
 
+import cv2
+import numpy as np
 from docx import Document
 from docx.shared import Inches, Pt
 
@@ -19,6 +21,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DS = ROOT / "data" / "dataset"
 SAMP = ROOT / "results" / "phase2"
 OUT = SAMP
+SAMPLES = ROOT / "data" / "samples_ext"
+GRIDS = SAMP / "grids"
 
 SOURCES = [
     ("HaGRID v1", "cj-mills/hagrid-sample-30k-384p (HF mirror of hukenovs/hagrid)",
@@ -40,14 +44,58 @@ SOURCES = [
      "mostly CC BY 4.0", "i_love_you (ASL ILY handshape) — 606 rows; see §7"),
 ]
 
+# (class label shown, samples_ext folder, caption, filename prefix | "")
 SAMPLE_ORDER = [
-    ("ok", "HaGRID"), ("thumb", "HaGRID"),
-    ("two_finger", "HaGRID"), ("ily_negative_call", "HaGRID (shaka -> idle)"),
-    ("idle_hagrid", "HaGRID no_gesture -> idle"),
-    ("t_pose", "COCO"), ("raise_right_hand", "COCO"), ("raise_left_hand", "COCO"),
-    ("sit", "COCO"), ("squat", "COCO"), ("laying", "COCO"),
-    ("idle_coco", "COCO -> idle"),
+    ("idle", "idle_hagrid", "HaGRID `no_gesture` — hand visible, no gesture", ""),
+    ("idle", "idle_coco", "COCO — a person, arms down, no gesture", "c"),
+    ("ok", "ok", "HaGRID `ok`", ""),
+    ("two_finger", "two_finger", "HaGRID `peace` / `peace_inverted` / `two_up`", ""),
+    ("thumb", "thumb", "HaGRID `like` — held-out HaGRID subjects are the thumb test set", ""),
+    ("mini_heart", "mini_heart", "s01 `mini_heart_01` — HaGRIDv2 `hand_heart` trains it; "
+                                 "an arm-elevation aug lifts those chest-level hands overhead", "s01"),
+    ("raise_right_hand", "raise_right_hand", "COCO — person's right wrist above the nose", "c"),
+    ("raise_left_hand", "raise_left_hand", "COCO + mirror-augmented raise_right_hand", "c"),
+    ("t_pose", "t_pose", "COCO — both wrists ~shoulder height, arms spread wide", "c"),
+    ("sit", "sit", "s01 `sit_01/02` test footage — TRAINED on 1,372 COCO rows "
+                   "(torso upright, thighs level); COCO's are noisier (§9)", "s01"),
+    ("laying", "laying", "s01 `laying_03` test footage — TRAINED on 607 COCO rows "
+                         "(torso horizontal)", "s01"),
+    ("squat", "squat", "s01 `squat_01` — COCO's squats were shallow crouches (§9), aug(s01) only", "s01"),
+    ("glico_pose", "glico_pose", "s01 `glico_pose_01` — no public dataset, aug(s01) only", "s01"),
+    ("(negative)", "ily_negative_call", "HaGRID `call` (shaka) -> mapped to idle "
+                                        "(a distinctive non-target gesture, a good hard negative)", ""),
 ]
+
+
+def _class_grid(folder: str, prefix: str, n: int = 4, tile: int = 210) -> Path | None:
+    """2-row grid for one class: raw source images (top) over their MediaPipe
+    overlays (bottom). Built from data/samples_ext/<folder>/."""
+    d = SAMPLES / folder
+    if not d.is_dir():
+        return None
+    raws = [p for p in sorted(d.glob(f"{prefix}*.jpg")) if "_pose" not in p.name]
+    if not raws:                                    # fall back to any sample
+        raws = [p for p in sorted(d.glob("*.jpg")) if "_pose" not in p.name]
+    raws = raws[:n]
+    if not raws:
+        return None
+    cols = []
+    for raw in raws:
+        ov = raw.with_name(raw.stem + "_pose.jpg")
+        a = cv2.imread(str(raw))
+        b = cv2.imread(str(ov)) if ov.exists() else a
+        if a is None:
+            continue
+        a = cv2.resize(a, (tile, tile))
+        b = cv2.resize(b, (tile, tile)) if b is not None else np.zeros_like(a)
+        cols.append(np.vstack([a, b]))
+    if not cols:
+        return None
+    grid = np.hstack(cols)
+    GRIDS.mkdir(parents=True, exist_ok=True)
+    out = GRIDS / f"{folder}.jpg"
+    cv2.imwrite(str(out), grid)
+    return out
 
 
 def _table(doc, headers, rows):
@@ -102,33 +150,29 @@ def main():
         "(docs/run_extraction_elsewhere.md)."
     )
 
-    doc.add_heading("2. What the training images look like", 1)
+    doc.add_heading("2. What the training images look like — every class", 1)
     doc.add_paragraph(
-        "6 examples per class below: top row = the source image, bottom row = the "
-        "MediaPipe skeleton + wrist-anchored hand crop that we actually turn into "
-        "features. This is exactly what the model sees."
+        "For each class: the source images (top row) over the MediaPipe skeleton "
+        "+ wrist-anchored hand crop we actually turn into the 152-d feature "
+        "vector (bottom row). This is exactly what the model sees — no pixels are "
+        "kept, only the normalised keypoints."
     )
-    for folder, cap in SAMPLE_ORDER:
-        img = SAMP / f"sample_{folder}.jpg"
-        if img.exists():
-            doc.add_paragraph(f"{folder}  —  {cap}", style="Heading 3")
-            doc.add_picture(str(img), width=Inches(6.0))
+    for label, folder, cap, prefix in SAMPLE_ORDER:
+        grid = _class_grid(folder, prefix)
+        doc.add_paragraph(f"{label}   —   {cap}", style="Heading 3")
+        if grid:
+            doc.add_picture(str(grid), width=Inches(6.6))
+        else:
+            doc.add_paragraph(f"[no samples in data/samples_ext/{folder} — "
+                              f"run `python scripts/pull_samples.py`]")
     doc.add_paragraph(
-        "mini_heart (HaGRIDv2 hand_heart) samples could not be pulled — the "
-        "HuggingFace preview API is down for that repo. Grab them on Colab if the "
-        "team needs them. HaGRID's hand-heart is a CHEST-level finger-heart and "
-        "s01's mini_heart is hands-together OVERHEAD; Phase 3 closes that gap with "
-        "an arm-elevation augmentation (raise_arms) rather than new data — the "
-        "per-hand normalisation already makes the handshape position-invariant, "
-        "so only the body pose needed lifting. mini_heart now scores 0.93."
-    )
-    doc.add_paragraph(
-        "Note the COCO honesty problem visible above: COCO has ACTIONS, not "
-        "gestures. 'arm raised' catches pitchers, tennis players, riders; 't_pose' "
-        "catches a baby lying with arms spread. MediaPipe re-verification "
-        "(section 4) drops ~55% of the COCO rows, but the survivors are still "
-        "sports-flavoured. This is why t_pose / raise_hand test lower and why "
-        "Phase 6 field data matters."
+        "The COCO honesty problem is visible above: COCO has ACTIONS, not held "
+        "gestures. 'arm raised' catches pitchers and riders; 't_pose' catches "
+        "anyone mid-stride with arms out. The _classify_coco filter + MediaPipe "
+        "re-verification (§4) drop ~40-55% of the COCO rows, but the survivors "
+        "still skew sporty — this is why t_pose / raise_hand test ~0.75-0.84 and "
+        "why Phase 6 field data matters. sit and laying mine cleanly; squat did "
+        "not (§9)."
     )
 
     doc.add_heading("3. From image to feature", 1)
@@ -253,13 +297,21 @@ def main():
     _table(doc, ["class", "COCO rows (clean)", "result"], [
         ["sit", "1,372", "leaked 0.96 / real 0.53 -> honest 0.91 F1, 0.97 "
                 "cross-person. Best single Phase 3 improvement."],
-        ["laying", "607", "honest 0.71 (was a leaked 1.00). Misses: a lying arm "
-                   "reads as raise_left_hand. Phase 4/5."],
+        ["laying", "607", "honest 0.71 (RF) / 0.88 (LGBM), was a leaked 1.00. "
+                   "Misses: a lying arm reads as raise_left_hand. Phase 4/5."],
         ["squat", "919, but bad", "COCO 'squat' = shallow crouches (knee ~107 "
                   "deg), overlaps sit — with it in, squat F1 -> 0.01 and sit -> "
                   "0.58. Reverted to aug(s01)-only. Needs NTU / a gym set."],
     ])
-    doc.add_paragraph("glico_pose has no dataset — stays aug-only.")
+    doc.add_paragraph(
+        "The COCO `sit` / `laying` auto-labels are noisy — an athletic crouch or "
+        "a bent-knee reach passes the 2D geometric filter, and COCO is mostly "
+        "sports photos, not people sitting on chairs. ~9% of the geometrically-"
+        "clean rows are still not really the posture. The aggregate signal "
+        "survives (sit 0.91), but this is why sit is not 0.99 and why the sample "
+        "grid in §2 shows the clean s01 footage rather than the training rows. "
+        "glico_pose has no dataset — stays aug-only."
+    )
 
     doc.add_heading("10. Known gaps", 1)
     for t in [

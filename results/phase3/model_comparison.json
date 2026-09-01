@@ -1,0 +1,96 @@
+{
+  "generated_from": [
+    "rf",
+    "lgbm"
+  ],
+  "headline": {
+    "rf": {
+      "macro_f1": 0.843,
+      "macro_f1_real_eval": 0.811,
+      "macro_f1_cross_domain": 0.791,
+      "micro_f1_accuracy": 0.884,
+      "balanced_accuracy": 0.833,
+      "expected_calibration_error": 0.148,
+      "mean_conf_correct": 0.772,
+      "mean_conf_wrong": 0.463,
+      "model_size_mb": 419.4,
+      "fit_seconds": 47.5
+    },
+    "lgbm": {
+      "macro_f1": 0.83,
+      "macro_f1_real_eval": 0.796,
+      "macro_f1_cross_domain": 0.774,
+      "micro_f1_accuracy": 0.869,
+      "balanced_accuracy": 0.825,
+      "expected_calibration_error": 0.061,
+      "mean_conf_correct": 0.961,
+      "mean_conf_wrong": 0.722,
+      "model_size_mb": 31.1,
+      "fit_seconds": 326.8
+    }
+  },
+  "per_class_f1": {
+    "idle": {
+      "rf": 0.631,
+      "lgbm": 0.551
+    },
+    "raise_right_hand": {
+      "rf": 0.77,
+      "lgbm": 0.733
+    },
+    "raise_left_hand": {
+      "rf": 0.762,
+      "lgbm": 0.777
+    },
+    "sit": {
+      "rf": 0.906,
+      "lgbm": 0.887
+    },
+    "squat": {
+      "rf": 1.0,
+      "lgbm": 1.0
+    },
+    "laying": {
+      "rf": 0.706,
+      "lgbm": 0.884
+    },
+    "ok": {
+      "rf": 0.784,
+      "lgbm": 0.784
+    },
+    "two_finger": {
+      "rf": 0.967,
+      "lgbm": 0.978
+    },
+    "thumb": {
+      "rf": 0.995,
+      "lgbm": 0.991
+    },
+    "mini_heart": {
+      "rf": 0.75,
+      "lgbm": 0.571
+    },
+    "t_pose": {
+      "rf": 0.839,
+      "lgbm": 0.8
+    },
+    "glico_pose": {
+      "rf": 1.0,
+      "lgbm": 1.0
+    }
+  },
+  "cross_person": {
+    "rf": {
+      "sit": {
+        "s01": 0.908,
+        "s02": 0.967
+      }
+    },
+    "lgbm": {
+      "sit": {
+        "s01": 0.829,
+        "s02": 1.0
+      }
+    }
+  }
+}
