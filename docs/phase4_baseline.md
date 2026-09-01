@@ -1,5 +1,8 @@
 # Phase 4 — classifier lock
 
+**LOCKED: MLP** (`classifier/mlp.py`, `classifier/models/mlp.joblib`, seed 0) —
+user decision 2026-09-01. `train.py` default should follow.
+
 Track C compared candidate classifiers on the finalised 12-class dataset
 (train 52,738 / val 2,357 / test 1,254), all scored by `classifier/evaluate.py`.
 Report: `results/phase4/classifier_report.docx`, figures in `results/phase4/fig/`.

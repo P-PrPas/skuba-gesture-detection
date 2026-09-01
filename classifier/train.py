@@ -161,7 +161,7 @@ def train_one(model: str, feat_mode: str):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="lgbm", choices=CANDIDATES + ["all"])
+    ap.add_argument("--model", default="mlp", choices=CANDIDATES + ["all"])  # Phase 4 lock
     ap.add_argument("--features", default="both",
                     choices=["raw", "derived", "both", "body_raw_hands_derived"])
     args = ap.parse_args()
