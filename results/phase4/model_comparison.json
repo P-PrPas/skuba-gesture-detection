@@ -1,0 +1,128 @@
+{
+  "generated_from": [
+    "rf",
+    "lgbm",
+    "logreg"
+  ],
+  "split": "test",
+  "headline": {
+    "rf": {
+      "macro_f1": 0.823,
+      "macro_f1_real_eval": 0.788,
+      "macro_f1_cross_domain": 0.767,
+      "micro_f1_accuracy": 0.868,
+      "balanced_accuracy": 0.815,
+      "expected_calibration_error": 0.146,
+      "mean_conf_correct": 0.769,
+      "mean_conf_wrong": 0.437,
+      "model_size_mb": 388.7,
+      "fit_seconds": 43.1
+    },
+    "lgbm": {
+      "macro_f1": 0.888,
+      "macro_f1_real_eval": 0.866,
+      "macro_f1_cross_domain": 0.853,
+      "micro_f1_accuracy": 0.923,
+      "balanced_accuracy": 0.878,
+      "expected_calibration_error": 0.036,
+      "mean_conf_correct": 0.952,
+      "mean_conf_wrong": 0.796,
+      "model_size_mb": 31.1,
+      "fit_seconds": 104.2
+    },
+    "logreg": {
+      "macro_f1": 0.667,
+      "macro_f1_real_eval": 0.61,
+      "macro_f1_cross_domain": 0.578,
+      "micro_f1_accuracy": 0.785,
+      "balanced_accuracy": 0.677,
+      "expected_calibration_error": 0.083,
+      "mean_conf_correct": 0.884,
+      "mean_conf_wrong": 0.52,
+      "model_size_mb": 0.0,
+      "fit_seconds": 30.7
+    }
+  },
+  "per_class_f1": {
+    "idle": {
+      "rf": 0.624,
+      "lgbm": 0.656,
+      "logreg": 0.0
+    },
+    "raise_right_hand": {
+      "rf": 0.793,
+      "lgbm": 0.812,
+      "logreg": 0.739
+    },
+    "raise_left_hand": {
+      "rf": 0.792,
+      "lgbm": 0.833,
+      "logreg": 0.721
+    },
+    "sit": {
+      "rf": 0.887,
+      "lgbm": 0.963,
+      "logreg": 0.798
+    },
+    "squat": {
+      "rf": 1.0,
+      "lgbm": 1.0,
+      "logreg": 0.915
+    },
+    "laying": {
+      "rf": 0.412,
+      "lgbm": 0.938,
+      "logreg": 0.326
+    },
+    "ok": {
+      "rf": 0.784,
+      "lgbm": 0.784,
+      "logreg": 0.784
+    },
+    "two_finger": {
+      "rf": 0.956,
+      "lgbm": 0.983,
+      "logreg": 0.967
+    },
+    "thumb": {
+      "rf": 0.979,
+      "lgbm": 0.983,
+      "logreg": 0.891
+    },
+    "mini_heart": {
+      "rf": 0.831,
+      "lgbm": 0.889,
+      "logreg": 0.0
+    },
+    "t_pose": {
+      "rf": 0.82,
+      "lgbm": 0.82,
+      "logreg": 0.87
+    },
+    "glico_pose": {
+      "rf": 1.0,
+      "lgbm": 1.0,
+      "logreg": 0.992
+    }
+  },
+  "cross_person": {
+    "rf": {
+      "sit": {
+        "s01": 0.94,
+        "s02": 0.9
+      }
+    },
+    "lgbm": {
+      "sit": {
+        "s01": 0.971,
+        "s02": 1.0
+      }
+    },
+    "logreg": {
+      "sit": {
+        "s01": 0.946,
+        "s02": 0.633
+      }
+    }
+  }
+}

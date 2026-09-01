@@ -38,7 +38,7 @@ CANDIDATES = ["rf", "lgbm", "catboost", "hgb", "et", "svm", "logreg", "mlp"]
 # posture mine landed; squat's COCO labels overlapped sit so it stays aug-only.
 AUG_ONLY = {"squat", "glico_pose"}
 WEIGHT_MULT = {c: 0.35 for c in AUG_ONLY} | {"idle": 0.6}
-SVM_SUBSAMPLE = 18000          # SVC is ~O(n^2); cap the train set
+SVM_SUBSAMPLE = 12000          # SVC is ~O(n^2); cap the train set (screening)
 
 
 def load_split(name: str, feat_mode: str):
@@ -83,10 +83,11 @@ def build_lgbm(y):
 
 def build_catboost(y):
     from catboost import CatBoostClassifier
-    return CatBoostClassifier(loss_function="MultiClass", iterations=600,
-                              learning_rate=0.05, depth=8,
+    # depth 6 (64 leaves/tree) — a screening config; the leading model gets tuned
+    return CatBoostClassifier(loss_function="MultiClass", iterations=400,
+                              learning_rate=0.06, depth=6,
                               class_weights=_weights(y), random_seed=0,
-                              verbose=False, allow_writing_files=False)
+                              thread_count=-1, verbose=False, allow_writing_files=False)
 
 
 def build_hgb(y):
