@@ -2,7 +2,8 @@
   "generated_from": [
     "rf",
     "lgbm",
-    "logreg"
+    "logreg",
+    "mlp"
   ],
   "split": "test",
   "headline": {
@@ -41,68 +42,92 @@
       "mean_conf_wrong": 0.52,
       "model_size_mb": 0.0,
       "fit_seconds": 30.7
+    },
+    "mlp": {
+      "macro_f1": 0.872,
+      "macro_f1_real_eval": 0.847,
+      "macro_f1_cross_domain": 0.834,
+      "micro_f1_accuracy": 0.915,
+      "balanced_accuracy": 0.863,
+      "expected_calibration_error": 0.103,
+      "mean_conf_correct": 0.855,
+      "mean_conf_wrong": 0.477,
+      "model_size_mb": 0.3,
+      "fit_seconds": 68.5
     }
   },
   "per_class_f1": {
     "idle": {
       "rf": 0.624,
       "lgbm": 0.656,
-      "logreg": 0.0
+      "logreg": 0.0,
+      "mlp": 0.761
     },
     "raise_right_hand": {
       "rf": 0.793,
       "lgbm": 0.812,
-      "logreg": 0.739
+      "logreg": 0.739,
+      "mlp": 0.757
     },
     "raise_left_hand": {
       "rf": 0.792,
       "lgbm": 0.833,
-      "logreg": 0.721
+      "logreg": 0.721,
+      "mlp": 0.769
     },
     "sit": {
       "rf": 0.887,
       "lgbm": 0.963,
-      "logreg": 0.798
+      "logreg": 0.798,
+      "mlp": 0.958
     },
     "squat": {
       "rf": 1.0,
       "lgbm": 1.0,
-      "logreg": 0.915
+      "logreg": 0.915,
+      "mlp": 1.0
     },
     "laying": {
       "rf": 0.412,
       "lgbm": 0.938,
-      "logreg": 0.326
+      "logreg": 0.326,
+      "mlp": 0.892
     },
     "ok": {
       "rf": 0.784,
       "lgbm": 0.784,
-      "logreg": 0.784
+      "logreg": 0.784,
+      "mlp": 0.784
     },
     "two_finger": {
       "rf": 0.956,
       "lgbm": 0.983,
-      "logreg": 0.967
+      "logreg": 0.967,
+      "mlp": 0.972
     },
     "thumb": {
       "rf": 0.979,
       "lgbm": 0.983,
-      "logreg": 0.891
+      "logreg": 0.891,
+      "mlp": 0.965
     },
     "mini_heart": {
       "rf": 0.831,
       "lgbm": 0.889,
-      "logreg": 0.0
+      "logreg": 0.0,
+      "mlp": 0.732
     },
     "t_pose": {
       "rf": 0.82,
       "lgbm": 0.82,
-      "logreg": 0.87
+      "logreg": 0.87,
+      "mlp": 0.879
     },
     "glico_pose": {
       "rf": 1.0,
       "lgbm": 1.0,
-      "logreg": 0.992
+      "logreg": 0.992,
+      "mlp": 1.0
     }
   },
   "cross_person": {
@@ -122,6 +147,12 @@
       "sit": {
         "s01": 0.946,
         "s02": 0.633
+      }
+    },
+    "mlp": {
+      "sit": {
+        "s01": 0.971,
+        "s02": 1.0
       }
     }
   }
