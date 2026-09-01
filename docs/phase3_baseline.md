@@ -29,32 +29,44 @@ Identical outcome to the earlier aug(s01) attempt.
 Root cause, measured on s01 hand features (`features/derived._hand_derived`):
 MediaPipe Hands on s01's wrist-crop reports **every finger curled** for
 `i_love_you`, `rock` and `two_finger` alike — `idxCurl` ≈ 2.7 rad (a straight
-finger is ~0.4), `thumbCurl` ≈ 2.85, `thumbPinkyAng` 0.26 vs 0.31. The hand is
-too small / distant / motion-blurred at conversational range for the backbone to
-resolve which fingers are extended. The three classes are **the same vector**.
-No classifier-layer or training-data fix separates identical inputs.
+finger is ~0.4), `thumbCurl` ≈ 2.85, `thumbPinkyAng` 0.26 vs 0.31. The three
+classes are **the same feature vector**. No classifier-layer or training-data
+fix separates identical inputs.
 
 `rock` / `two_finger` only "work" because HaGRID teaches those labels for
 "loose-fist-shaped hand + upright body" and s01's executions happen to match;
 `i_love_you` has no such luck and collapses into `rock`.
 
-Real fixes (Phase 4+ / Phase 6), in order of cost:
-1. **Upscale the wrist crop** before `hands.detect` (pure preprocessing, not a
-   backbone change) — cheap Phase 4 experiment, may recover finger resolution.
-2. Re-record ILY / rock / two_finger closer, where fingers are resolvable.
+**Crop reframing does NOT fix it (tested).** A two-stage crop
+(`HandLandmarker.detect_at_wrist`, prototyped then reverted) — loose crop to
+locate the hand, then a tight re-crop with the hand filling ~65% of the frame —
+left the features unchanged: ILY `thumbPinkyAng` 0.26 vs rock 0.28,
+`idxCurl` 2.80 vs 2.93. (An earlier wrist-centred 0.3×-shoulder crop *seemed* to
+separate them, but that came with a 20% detection drop from clipped hands — the
+"separation" was a partial-hand artifact.) MediaPipe Hands genuinely cannot
+resolve finger extension on this footage regardless of framing.
+
+Remaining options (all out of Phase 3 scope):
+1. Swap the hand-landmark model (backbone change).
+2. Re-record ILY / rock / two_finger closer & sharper.
 3. Accept `i_love_you` / `rock` / `two_finger` as a known confusion cluster and
-   lean on temporal + context cues in Phase 5.
+   lean on temporal + context cues in Phase 5, or collect them in Phase 6.
 
 The 606 ILY feature rows are kept in `data/features_ext/roboflow_ily__*.npz` for
-whichever fix lands; `i_love_you` stays in `PENDING_DATA` until then.
+whichever fix lands; `i_love_you` stays in `PENDING_DATA`.
 
-### `heart` — no dataset
+### `heart` — no data
 
-No dataset for the overhead 2-arm heart. A COCO-mining filter branch is wired
-(`_classify_coco`) but not yet extracted. See `docs/external_datasets.md` R2.3.
+No dataset for the overhead 2-arm heart. The `_classify_coco` heart branch
+(wired, `docs/external_datasets.md` R2.3) finds only **55 candidates** in all of
+COCO-train, mostly false positives (reaching / diving poses that match "wrists
+above eyes, together, elbows out"). MediaPipe would keep ~half → too few, and
+the earlier 48/606-row `i_love_you` runs showed a class this small poisons its
+neighbours. Not extracted. Phase 6 field data.
 
 Both stay in the class list and `test.npz`, excluded from training, flagged
 `pending_data`. Test frames land as: `i_love_you` → rock, `heart` → mini_heart.
+Data-side history for both is in `results/phase2/dataset_report.docx` §7-8.
 
 **`mini_heart` fix (Round 2, R2.4).** HaGRIDv2 `hand_heart` gives the right
 handshape; the per-hand normalisation makes the hand slice position-invariant,
@@ -97,11 +109,11 @@ Phase 4, which is where the model lock happens anyway.
 Phase 4 reuses for the MLP and the feature comparison.
 
 Carried into Phase 4/5:
+- LightGBM vs RF head-to-head on Colab; add the MLP; lock one.
 - per-class confidence thresholds + the idle/unknown fallback.
 - re-extract COCO with a person-bbox crop (COCO gives the bbox) to lift
   raise_hand / t_pose recall (now ~0.75).
-- **upscale the wrist crop before `hands.detect`** — the `i_love_you` / `rock` /
-  `two_finger` collapse is MediaPipe failing to resolve fingers on a small
-  distant hand; upscaling is preprocessing, not a backbone change.
-- `i_love_you` (needs the crop fix or re-recording) / `heart` (needs a dataset
-  or COCO-mining) — or Phase 6 field data.
+- `rock` / `ok` / `two_finger` sit at 0.72-0.78 — MediaPipe Hands is near its
+  ceiling on this footage (same limit that sinks `i_love_you`); a hand-model
+  swap is the only lever left, evaluate in Phase 4.
+- `i_love_you` / `heart` — Phase 6 field data (or a hand-model swap / re-record).

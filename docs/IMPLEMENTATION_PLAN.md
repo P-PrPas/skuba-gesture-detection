@@ -52,12 +52,30 @@ Phased roadmap. Each phase has a goal, concrete tasks, a deliverable, and an exi
 
 **Exit criterion:** baseline meets a minimum bar the team agrees on before comparing alternatives — don't tune this baseline extensively yet.
 
+**Status: DONE (2026-09-01).** RandomForest, features=both, 13/15 classes
+modelled — macro-F1 0.87 / 0.82 over the 9 real-generalisation classes,
+no class below 0.6. Report: `results/phase3/classifier_report.docx`,
+`docs/phase3_baseline.md`.
+- `mini_heart` recovered 0.00 → 0.93 via an arm-elevation augmentation
+  (`features/augment.raise_arms`) + an inter-wrist-distance feature — no new data.
+- `i_love_you` NOT modelled: every path tried (aug s01; 606 real ILY images
+  from 5 Roboflow ASL sets; two-stage tight crop). MediaPipe Hands can't
+  resolve fingers on s01's footage — i_love_you / rock / two_finger are one
+  feature vector. Needs a hand-model swap or re-recording → Phase 4/6.
+  Data history: `results/phase2/dataset_report.docx` §7.
+- `heart` NOT modelled: no dataset; COCO-mining finds only 55 noisy candidates
+  → Phase 6. (§8.)
+- Per-class thresholds + idle fallback: carried into Phase 4/5.
+- LightGBM vs RF head-to-head: deferred to Colab in Phase 4 (laptop RAM).
+
 ## Phase 4 — Classifier iteration
 
 **Goal:** the actual experimentation phase — this is where most of the project's effort goes.
 
-- Compare feature representations: raw normalized coordinates vs. derived features (joint angles, inter-point distances)
-- Compare model families: LightGBM/RF vs. MLP vs. (if needed later) a small temporal model
+- Compare feature representations: raw normalized coordinates vs. derived features (joint angles, inter-point distances) — `--features` flag already exists
+- Compare model families: LightGBM/RF vs. MLP vs. (if needed later) a small temporal model — run the LGBM/RF head-to-head on Colab (13-class), add the MLP, lock one
+- **Evaluate a hand-landmark model swap** — MediaPipe Hands can't resolve fine finger differences on s01's distant footage (caps rock/ok/two_finger at ~0.75, makes `i_love_you` unmodellable); this is the biggest lever left
+- Re-extract COCO with a person-bbox crop (COCO gives the bbox) — should lift raise_hand / t_pose recall (~0.75) by dropping wrong-person detections
 - Tune augmentation strength against validation performance — too little augmentation underfits generalization, too much washes out real class boundaries
 - Re-run full confusion matrix after every change; a fix for one class must not silently break another as the class count grows
 

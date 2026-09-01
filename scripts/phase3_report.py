@@ -242,13 +242,15 @@ def main():
     _table(doc, ["pending class", "test frames land as (count)"],
            [[c, ", ".join(f"{k} {v}" for k, v in w.items())] for c, w in pl.items()])
     doc.add_paragraph(
-        "i_love_you -> rock is the s01 overlap (same person did both similarly in "
-        "one session); the fix is real ILY images (Roboflow Universe carries the "
-        "handshape as a labelled class — see docs/external_datasets.md R2.2). "
-        "heart -> mini_heart now (it used to land on raise_right_hand) — the "
-        "model sees hands-together-overhead but has no `heart` label; the "
-        "separator when data lands is hand shape. heart is mineable from COCO "
-        "pose (R2.3) or Phase 6 field data."
+        "i_love_you -> rock: 606 real ILY images were pulled from 5 Roboflow ASL "
+        "datasets and trained on — recall stayed 0.00 and rock fell 0.78->0.48. "
+        "MediaPipe Hands reports every finger curled for i_love_you / rock / "
+        "two_finger on s01's footage (they are the same feature vector); a "
+        "two-stage tight crop was tested and did not change this. It needs a "
+        "hand-model swap, closer re-recording, or Phase 6 data. "
+        "heart -> mini_heart: the COCO heart-mining filter finds only 55 "
+        "candidates in all of COCO-train (mostly false positives) — too few. "
+        "Phase 6. Full data-side history: results/phase2/dataset_report.docx."
     )
 
     hg = OUT / "handgap_rock.jpg"
@@ -287,10 +289,12 @@ def main():
         "the idle/unknown fallback (Phase 3 deliverable, carried into Phase 5).",
         "Re-extract COCO with a person-bbox crop — COCO gives the bbox; cropping "
         "to it before MediaPipe should lift raise_hand / t_pose recall (now "
-        "~0.72) by removing the wrong-person detections.",
-        "Pull i_love_you from Roboflow Universe (ASL ILY handshape, mostly "
-        "CC BY 4.0) and run the wired COCO heart-mining branch; retrain. Both "
-        "need a box that isn't the SKUBA laptop (Colab).",
+        "~0.75) by removing the wrong-person detections.",
+        "Evaluate a hand-landmark model swap — rock/ok/two_finger sit at "
+        "0.72-0.78 and i_love_you is unmodellable because MediaPipe Hands can't "
+        "resolve fingers on s01's footage (crop reframing was tested, no gain).",
+        "i_love_you / heart -> Phase 6 field recordings (or the hand-model swap "
+        "for i_love_you).",
     ], 1):
         doc.add_paragraph(f"{i}. {t}", style="List Bullet")
 

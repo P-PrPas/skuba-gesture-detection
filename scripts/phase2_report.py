@@ -29,10 +29,15 @@ SOURCES = [
      "same, hand visible but no gesture", "as above", "idle"),
     ("HaGRID v2", "testdummyvt/hagRIDv2_512px (val split)",
      "same, 34 classes", "disputed commercial status; RoboCup use fine",
-     "mini_heart (hand_heart / hand_heart2)"),
+     "mini_heart (hand_heart / hand_heart2) — chest-level, lifted to overhead "
+     "by an arm-elevation augmentation"),
     ("COCO 2017", "person_keypoints_train2017 + images.cocodataset.org",
      "in-the-wild photos, full scenes, many sports/action shots",
      "annotations CC BY 4.0", "t_pose, raise_right_hand, raise_left_hand; + idle negatives"),
+    ("Roboflow Universe", "5 ASL detection projects (ece496-public-asl, "
+     "signlanguage-f0irs, actions-zqpb1, asl-detection-lvx6a, signlanguageai)",
+     "frontal webcam ASL images, hand bbox labelled",
+     "mostly CC BY 4.0", "i_love_you (ASL ILY handshape) — 606 rows; see §7"),
 ]
 
 SAMPLE_ORDER = [
@@ -85,7 +90,10 @@ def main():
         "after), runs our MediaPipe Pose + Hands pipeline on each image, and keeps "
         "ONLY the 152-d normalised feature vector (~0.6 KB/frame). COCO downloads "
         "only the ~250 MB keypoint-annotation JSON plus the few hundred images "
-        "that pass a pose filter. No source images are retained."
+        "that pass a pose filter. Roboflow projects are downloaded as COCO-format "
+        "exports (needs a free API key), extracted, then deleted. No source "
+        "images are retained. Extraction runs on Colab — the SKUBA laptop OOMs "
+        "(docs/run_extraction_elsewhere.md)."
     )
 
     doc.add_heading("2. What the training images look like", 1)
@@ -102,9 +110,11 @@ def main():
     doc.add_paragraph(
         "mini_heart (HaGRIDv2 hand_heart) samples could not be pulled — the "
         "HuggingFace preview API is down for that repo. Grab them on Colab if the "
-        "team needs them. Note the class also failed in Phase 3: HaGRID's "
-        "hand-heart is a CHEST-level finger-heart, s01's mini_heart is "
-        "hands-together OVERHEAD — different pose."
+        "team needs them. HaGRID's hand-heart is a CHEST-level finger-heart and "
+        "s01's mini_heart is hands-together OVERHEAD; Phase 3 closes that gap with "
+        "an arm-elevation augmentation (raise_arms) rather than new data — the "
+        "per-hand normalisation already makes the handshape position-invariant, "
+        "so only the body pose needed lifting. mini_heart now scores 0.93."
     )
     doc.add_paragraph(
         "Note the COCO honesty problem visible above: COCO has ACTIONS, not "
@@ -169,23 +179,71 @@ def main():
         "cross-subject + cross-domain generalisation number.",
         "held_out_external (thumb): cross-subject within HaGRID, same webcam "
         "domain.",
-        "aug_only_leak (sit, squat, laying, i_love_you, heart, glico_pose): no "
-        "external data. Train = augmented s01 frames. For `sit`, s02's frames are "
-        "still a clean cross-person check (aug pool is s01-only); for `laying` "
-        "there is no s01 so it is a full leak. These are NOT generalisation "
-        "numbers — Phase 6 field testing is the gate.",
+        "aug_only_leak (sit, squat, laying, glico_pose): no external data. "
+        "Train = augmented s01 frames. For `sit`, s02's frames are still a clean "
+        "cross-person check (aug pool is s01-only); for `laying` there is no s01 "
+        "so it is a full leak. NOT generalisation numbers — Phase 6 is the gate.",
+        "pending_data (i_love_you, heart): 0 training rows, see §7-8.",
     ]:
         doc.add_paragraph(t, style="List Bullet")
 
-    doc.add_heading("7. Known gaps", 1)
+    doc.add_heading("7. i_love_you — every data path tried, and why none worked", 1)
+    doc.add_paragraph(
+        "i_love_you is the ASL 'I Love You' handshape (thumb + index + pinky "
+        "extended). It is the one target class we could not get a working "
+        "training path for. In order:"
+    )
+    _table(doc, ["attempt", "data", "result"], [
+        ["aug(s01) only", "the s01 i_love_you_01 clip, augmented",
+         "recall 0.00; dragged rock to 0.00 (s01's rock and ILY were performed "
+         "near-identically in one session)"],
+        ["Round-1 search", "WLASL / MS-ASL video, ASL alphabet image sets",
+         "no 'I love you' gloss / only A-Z — declared 'none' (this was a scoping "
+         "miss: the sign is a static handshape, not covered by alphabet sets)"],
+        ["Round-2 search", "Roboflow Universe ASL detection datasets",
+         "the ILY handshape IS a labelled class in several — found 5 usable "
+         "(ece496-public-asl, signlanguage-f0irs, actions-zqpb1, "
+         "asl-detection-lvx6a, signlanguageai), mostly CC BY 4.0"],
+        ["roboflow_ily extraction", "606 real ILY images through our pipeline "
+         "(committed: data/features_ext/roboflow_ily__i_love_you.npz)",
+         "recall still 0.00; rock fell 0.78 -> 0.48"],
+        ["crop reframing", "two-stage tight crop so the hand fills the frame",
+         "no change to the features — ILY thumbPinkyAng 0.26 vs rock 0.28"],
+    ])
+    doc.add_paragraph(
+        "Root cause (measured on s01 hand features): MediaPipe Hands reports "
+        "every finger curled for i_love_you / rock / two_finger alike on s01's "
+        "conversational-distance footage — idxCurl ~2.7 rad for all three "
+        "(a straight finger is ~0.4). The three classes are the SAME feature "
+        "vector; no training data or preprocessing separates identical inputs. "
+        "This is a hand-backbone resolution limit. Options left: swap the "
+        "hand-landmark model, re-record ILY/rock/two_finger closer and sharper, "
+        "or collect them in Phase 6. The 606 feature rows are kept for whichever "
+        "lands. See docs/phase3_baseline.md and docs/external_datasets.md R2.9."
+    )
+
+    doc.add_heading("8. heart — no dataset exists", 1)
+    doc.add_paragraph(
+        "The overhead two-arm heart is in no public dataset. It is a pose-only "
+        "class (arms make the shape), so it was treated like t_pose and a "
+        "COCO-mining filter was added to _classify_coco (both wrists above the "
+        "eyes, hands near the midline, both elbows outboard). Scanning all of "
+        "COCO-train it finds only 55 candidates, most of them false positives "
+        "(reaching / diving / celebration poses). MediaPipe would keep ~half — "
+        "too few, and the i_love_you runs showed a class this small poisons its "
+        "neighbours. Not extracted; heart -> Phase 6 field data."
+    )
+
+    doc.add_heading("9. Known gaps", 1)
     for t in [
-        "sit / laying / squat / i_love_you / heart / glico_pose — no external "
-        "data found (NTU needs registration, Le2i's link is dead, ASL ILY sign "
-        "is in no static-image dataset).",
-        "Hand-landmark domain gap: s01's fingertip spread is ~2x HaGRID's even "
-        "after palm-width normalisation (Phase 3 report). This broke `rock`.",
-        "COCO poses are action photos, not held gestures.",
-        "mini_heart body position (chest vs overhead).",
+        "sit / laying / squat / glico_pose — no external data (NTU needs "
+        "registration, Le2i's link is dead). Train = aug(s01/s02).",
+        "i_love_you / heart — see §7-8. Not modelled.",
+        "Hand-landmark resolution: MediaPipe Hands can't resolve fine finger "
+        "differences on s01's distant footage — caps rock / ok / two_finger at "
+        "~0.72-0.78 and makes i_love_you unmodellable.",
+        "COCO poses are action photos, not held gestures — t_pose / raise_hand "
+        "test lower for this reason.",
     ]:
         doc.add_paragraph(t, style="List Bullet")
 
