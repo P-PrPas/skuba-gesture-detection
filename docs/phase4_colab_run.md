@@ -1,45 +1,55 @@
-# Phase 4 Track C — Colab training run (in progress)
+# Phase 4 — resume notes
 
-**State as of this session:** the colab-mcp bridge is set up and connected. A
-Colab scratch notebook is running `python -m classifier.train --model all` on
-the 12-class + val-split dataset (12 GB RAM, 2 CPUs — slow, ~20 min).
+## Done (committed)
 
-## If resuming in a fresh session
+- **Classifier LOCKED = MLP** (`classifier/mlp.py`, seed 0). `train.py` default is
+  `mlp`. 5-seed real-eval 0.857 ± 0.016 (tied with LightGBM). Chosen for
+  thresholdable confidence (0.85 correct / 0.49 wrong) + 0.3 MB.
+  `docs/phase4_baseline.md`.
+- Track C comparison: `results/phase4/classifier_report.docx`,
+  `results/phase4/model_comparison.json`, `results/phase4/fig/`.
+- `data/dataset/val.npz` — 15% held-out slice of each external class's clean
+  pre-augment rows (`VAL_FRAC` in `build_dataset.py`). For early stopping /
+  temperature scaling / threshold tuning. Never touch `test.npz`.
+- `classifier/evaluate.py` — model-agnostic harness. `--all` scores every
+  `models/*.joblib`; `--split {test,val}`.
+- s01/s02 features (`data/features/*.npz`) now committed (were git-ignored).
+- colab-mcp bridge is set up in this project's local MCP config. It works but
+  the free Colab tier is 2 weak CPUs — RandomForest took 7 min there, CatBoost
+  and HGB each stalled past 20 min. Not useful for training; fine for light
+  scripting.
 
-1. `mcp__colab-mcp__open_colab_browser_connection` (needs a browser click to
-   confirm) — the Colab **kernel keeps running server-side** even across a
-   Claude restart, so the training may already be done.
-2. `mcp__colab-mcp__get_cells(includeOutputs=true)` — read the training cell
-   (index 4) and the eval cell.
-3. Notebook cells already added:
-   - 0: clone repo + `git pull` + resource check
-   - 1: `pip install lightgbm catboost seaborn`
-   - 2: `git pull` + `python -m pipeline.build_dataset` (train 52738 / val 2357 /
-        test 1254 — matches local)
-   - 4: `python -m classifier.train --model all`
-   - **still to add**: `python -m classifier.evaluate --all` then a cell that
-     `print`s `results/phase4/model_comparison.json` + each `*.eval.json` so the
-     numbers come back as cell output (no file download needed).
-4. To get the winning model's `.joblib` back: either retrain it locally
-   (LGBM ~100 s) or base64 it out of a Colab cell.
+## Track C leftovers (optional — decision already made)
 
-## Local state (all committed, pushed)
+- CatBoost / HistGradientBoosting / RBF-SVM never completed (Colab too slow).
+  Same GBDT family as LightGBM — they would not beat the locked MLP on the
+  deciding metric (confidence separation). Run on a real machine only if the
+  lock is re-opened.
 
-- `data/features/*.npz` now committed (was git-ignored) — the s01/s02 test set.
-- rf / lgbm / logreg trained locally on the val-split dataset:
-  - **LGBM macro-F1 0.888 / real-eval 0.866 / acc 0.923 / ECE 0.036 / 31 MB** —
-    clear leader
-  - RF 0.823 / 0.788 / 0.146 / 389 MB (laying collapsed to 0.41)
-  - LogReg 0.667 / 0.61 — the linear floor
-- `results/phase4/model_comparison.json` + `results/phase4/fig/` hold the local
-  3-model comparison.
+## Next — Track B / D / E (a fresh session does these cleanly)
 
-## Next after the Colab numbers land
+1. **Track B — feature set.** MLP `--features` sweep was running when this
+   session ended; partial result in a scratch log — `raw` (152-d) tied `both`
+   (189-d) at real-eval 0.846. Re-run:
+   ```
+   for f in raw derived both body_raw_hands_derived; do
+     python -m classifier.train --model mlp --features $f
+     python -m classifier.evaluate --model mlp
+   done
+   ```
+   If `raw` holds, switch the MLP to `raw` (smaller input, the net learns the
+   derived interactions itself) and retrain + re-lock.
 
-1. Regenerate a Phase 4 report (new script `scripts/phase4_report.py` — model
-   comparison table + per-class F1 + calibration figures, like the Phase 3 one).
-2. Pick + lock one model → write `docs/phase4_baseline.md` with the rationale.
-   LGBM leads; the open questions are whether CatBoost calibrates better and
-   whether the MLP's <1 MB size + temperature scaling makes it competitive.
-3. Then Track D (augmentation strength on the val split) and Track E (per-class
-   confidence thresholds on the val split).
+2. **Track D — augmentation strength.** `AugParams` in `features/augment.py`.
+   MLP's weak classes are `mini_heart` (0.73) and `raise_*_hand` (0.76). Tune
+   `n_per_sample`, `rot_deg`, `coord_noise_std`, the `mini_heart` elevation
+   range, etc. against `val.npz` (not test). Re-run the harness after each
+   change — a fix for one class must not break another.
+
+3. **Track E — per-class confidence thresholds.** On `val.npz`, per class, find
+   the max-probability threshold below which the frame goes to `idle/unknown`.
+   Wire into the Phase 5 smoothing/fallback. `idle` currently over-triggers
+   (precision ~0.47).
+
+4. Regenerate `results/phase4/classifier_report.docx` from the harness outputs;
+   update `docs/phase4_baseline.md` if the pick config changes.
