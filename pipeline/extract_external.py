@@ -456,11 +456,27 @@ def run_roboflow(source: str):
             shutil.rmtree(loc, ignore_errors=True)
         t0 = time.time()
         project = rf.workspace(ws).project(proj)
-        if ver is None:                                     # newest version
-            vlist = sorted(int(str(v).split("/")[-1]) for v in project.versions())
-            ver = vlist[-1]
-            print(f"  {tag}: using version {ver}", flush=True)
-        project.version(ver).download(fmt, location=str(loc))
+        # .versions() is unreliable for Universe projects you don't own -> just
+        # try candidate version numbers / formats and take the first that
+        # downloads actual images.
+        fmts = list(dict.fromkeys([fmt, "coco", "folder", "multiclass"]))
+        vers = [ver] if ver else list(range(1, 9))
+        got = False
+        for cand, f in ((v, f) for v in vers for f in fmts):
+            try:
+                project.version(cand).download(f, location=str(loc))
+            except Exception:  # noqa: BLE001
+                shutil.rmtree(loc, ignore_errors=True)
+                continue
+            if any(loc.rglob("*.jpg")) or any(loc.rglob("*.png")):
+                got = True
+                print(f"  {tag}: version {cand}, format {f}", flush=True)
+                break
+            shutil.rmtree(loc, ignore_errors=True)
+        if not got:
+            print(f"  {tag}: nothing downloaded (versions 1-12, formats {fmts}) - skipping",
+                  flush=True)
+            continue
         kept = 0
         for imgf, bbox, cls in _iter_roboflow_export(loc, lmap):
             if sink.counts[cls] >= cap:
