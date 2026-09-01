@@ -1,0 +1,71 @@
+{
+  "model": "mlp",
+  "features": "both",
+  "keep": 0.85,
+  "global_floor": 0.2,
+  "reference_val_thresholds": {
+    "idle": 0.531,
+    "raise_right_hand": 0.587,
+    "raise_left_hand": 0.587,
+    "sit": 0.499,
+    "squat": null,
+    "laying": 0.699,
+    "ok": 0.953,
+    "two_finger": 0.949,
+    "thumb": 0.956,
+    "mini_heart": 0.864,
+    "t_pose": 0.619,
+    "glico_pose": null
+  },
+  "transfer": {
+    "val": {
+      "n": 2357,
+      "raw": {
+        "macro_f1": 0.747,
+        "acc": 0.776,
+        "idle_p": 0.984,
+        "idle_r": 0.539,
+        "to_idle": 0
+      },
+      "val_per_class": {
+        "macro_f1": 0.75,
+        "acc": 0.768,
+        "idle_p": 0.71,
+        "idle_r": 0.743,
+        "to_idle": 448
+      },
+      "global_floor": {
+        "macro_f1": 0.747,
+        "acc": 0.776,
+        "idle_p": 0.984,
+        "idle_r": 0.539,
+        "to_idle": 0
+      }
+    },
+    "test": {
+      "n": 1254,
+      "raw": {
+        "macro_f1": 0.873,
+        "acc": 0.915,
+        "idle_p": 0.621,
+        "idle_r": 0.983,
+        "to_idle": 0
+      },
+      "val_per_class": {
+        "macro_f1": 0.754,
+        "acc": 0.821,
+        "idle_p": 0.226,
+        "idle_r": 1.0,
+        "to_idle": 170
+      },
+      "global_floor": {
+        "macro_f1": 0.872,
+        "acc": 0.915,
+        "idle_p": 0.615,
+        "idle_r": 0.983,
+        "to_idle": 1
+      }
+    }
+  },
+  "finding": "per-class val thresholds do not transfer to cross-domain test (val confidences ~0.2 high); on test the idle errors are real gestures misread as idle so reject-to-idle only lowers idle precision. Only global_floor 0.20 is active."
+}

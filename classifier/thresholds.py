@@ -120,21 +120,38 @@ def main():
         if t is not None:
             print(f"  {c:16s} {t}")
 
+    transfer = {}
     for sp in ("val", "test"):
         y, pred, conf = scored[sp]
         thr = np.array([ref.get(CLASSES[int(c)]) or 0.0 for c in pred])
         g = _apply(pred, conf, thr)
         fl = _apply(pred, conf, np.full(len(pred), GLOBAL_FLOOR))
-        ip = _f1(y, pred, IDLE)
-        gp = _f1(y, g, IDLE)
-        fp_ = _f1(y, fl, IDLE)
-        print(f"\n[{sp}]  n={len(y)}")
-        print(f"  raw           macroF1 {_macro(y, pred):.3f}  acc {(pred == y).mean():.3f}  "
-              f"idle P/R {ip[1]:.2f}/{ip[2]:.2f}")
-        print(f"  val-per-class macroF1 {_macro(y, g):.3f}  acc {(g == y).mean():.3f}  "
-              f"idle P/R {gp[1]:.2f}/{gp[2]:.2f}  ({(g != pred).sum()} ->idle)")
-        print(f"  global {GLOBAL_FLOOR}   macroF1 {_macro(y, fl):.3f}  acc {(fl == y).mean():.3f}  "
-              f"idle P/R {fp_[1]:.2f}/{fp_[2]:.2f}  ({(fl != pred).sum()} ->idle)")
+        ip, gp, fp_ = _f1(y, pred, IDLE), _f1(y, g, IDLE), _f1(y, fl, IDLE)
+        transfer[sp] = {
+            "n": int(len(y)),
+            "raw":          {"macro_f1": round(_macro(y, pred), 3), "acc": round(float((pred == y).mean()), 3),
+                             "idle_p": round(ip[1], 3), "idle_r": round(ip[2], 3), "to_idle": 0},
+            "val_per_class": {"macro_f1": round(_macro(y, g), 3), "acc": round(float((g == y).mean()), 3),
+                              "idle_p": round(gp[1], 3), "idle_r": round(gp[2], 3), "to_idle": int((g != pred).sum())},
+            "global_floor": {"macro_f1": round(_macro(y, fl), 3), "acc": round(float((fl == y).mean()), 3),
+                             "idle_p": round(fp_[1], 3), "idle_r": round(fp_[2], 3), "to_idle": int((fl != pred).sum())},
+        }
+        r = transfer[sp]
+        print(f"\n[{sp}]  n={r['n']}")
+        for row in ("raw", "val_per_class", "global_floor"):
+            v = r[row]
+            print(f"  {row:14s} macroF1 {v['macro_f1']:.3f}  acc {v['acc']:.3f}  "
+                  f"idle P/R {v['idle_p']:.2f}/{v['idle_r']:.2f}  ({v['to_idle']} ->idle)")
+
+    (ROOT / "results" / "phase4" / "track_e.json").write_text(json.dumps({
+        "model": args.model, "features": feat_mode, "keep": args.keep,
+        "global_floor": GLOBAL_FLOOR, "reference_val_thresholds": ref,
+        "transfer": transfer,
+        "finding": "per-class val thresholds do not transfer to cross-domain "
+                   "test (val confidences ~0.2 high); on test the idle errors "
+                   "are real gestures misread as idle so reject-to-idle only "
+                   "lowers idle precision. Only global_floor 0.20 is active.",
+    }, indent=2))
 
     out = MODELS / f"{args.model}.thresholds.json"
     out.write_text(json.dumps({

@@ -48,7 +48,9 @@ Full tables + rationale in `docs/phase4_baseline.md`. Summary:
    Only a `global_floor` 0.20 garbage gate is active; real thresholds wait for
    Phase 6 field confidences. `mlp.thresholds.json` records inactive val refs.
 
-4. Report docx NOT regenerated — pick config (MLP/`both`/seed 0) unchanged, and
-   the docx is the Track C model comparison, which B/D/E don't touch.
+4. **Report regenerated** — `results/phase4/classifier_report.docx` now has the
+   model comparison + Track B/D/E sections + a paper-style **accuracy-vs-size
+   Pareto scatter** (`scripts/pareto_scatter.py`, shared with the Phase 1
+   report — added a speed-vs-keypoint-quality scatter there too).
 
 **Phase 4 done. Next: Phase 5 (temporal smoothing + real-time pipeline).**

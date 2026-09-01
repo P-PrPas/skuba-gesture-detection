@@ -1,0 +1,142 @@
+[
+  {
+    "tag": "D0_baseline",
+    "train_rows": 52738,
+    "val": {
+      "macro_f1": 0.747,
+      "real_eval": 0.747,
+      "acc": 0.776,
+      "mini_heart": 0.989,
+      "raise_right_hand": 0.64,
+      "raise_left_hand": 0.659,
+      "idle": 0.696,
+      "t_pose": 0.5,
+      "ok": 0.952,
+      "laying": 0.678
+    },
+    "test": {
+      "macro_f1": 0.872,
+      "real_eval": 0.847,
+      "acc": 0.915,
+      "mini_heart": 0.732,
+      "raise_right_hand": 0.757,
+      "raise_left_hand": 0.769,
+      "idle": 0.761,
+      "t_pose": 0.879,
+      "ok": 0.784,
+      "laying": 0.892
+    }
+  },
+  {
+    "tag": "D1_keeporig",
+    "train_rows": 54138,
+    "val": {
+      "macro_f1": 0.754,
+      "real_eval": 0.754,
+      "acc": 0.79,
+      "mini_heart": 0.992,
+      "raise_right_hand": 0.646,
+      "raise_left_hand": 0.649,
+      "idle": 0.722,
+      "t_pose": 0.5,
+      "ok": 0.967,
+      "laying": 0.667
+    },
+    "test": {
+      "macro_f1": 0.86,
+      "real_eval": 0.832,
+      "acc": 0.913,
+      "mini_heart": 0.657,
+      "raise_right_hand": 0.775,
+      "raise_left_hand": 0.69,
+      "idle": 0.781,
+      "t_pose": 0.879,
+      "ok": 0.784,
+      "laying": 0.87
+    }
+  },
+  {
+    "tag": "D1b_keeporig_dy",
+    "train_rows": 54138,
+    "val": {
+      "macro_f1": 0.751,
+      "real_eval": 0.751,
+      "acc": 0.791,
+      "mini_heart": 0.993,
+      "raise_right_hand": 0.627,
+      "raise_left_hand": 0.645,
+      "idle": 0.72,
+      "t_pose": 0.468,
+      "ok": 0.96,
+      "laying": 0.673
+    },
+    "test": {
+      "macro_f1": 0.846,
+      "real_eval": 0.816,
+      "acc": 0.915,
+      "mini_heart": 0.393,
+      "raise_right_hand": 0.744,
+      "raise_left_hand": 0.719,
+      "idle": 0.781,
+      "t_pose": 0.879,
+      "ok": 0.8,
+      "laying": 0.923
+    }
+  },
+  {
+    "tag": "D2_more_copies",
+    "train_rows": 78213,
+    "val": {
+      "macro_f1": 0.746,
+      "real_eval": 0.746,
+      "acc": 0.793,
+      "mini_heart": 0.989,
+      "raise_right_hand": 0.652,
+      "raise_left_hand": 0.632,
+      "idle": 0.73,
+      "t_pose": 0.386,
+      "ok": 0.944,
+      "laying": 0.679
+    },
+    "test": {
+      "macro_f1": 0.823,
+      "real_eval": 0.788,
+      "acc": 0.899,
+      "mini_heart": 0.163,
+      "raise_right_hand": 0.69,
+      "raise_left_hand": 0.808,
+      "idle": 0.733,
+      "t_pose": 0.912,
+      "ok": 0.763,
+      "laying": 0.923
+    }
+  },
+  {
+    "tag": "D3_gentle_occl",
+    "train_rows": 52738,
+    "val": {
+      "macro_f1": 0.76,
+      "real_eval": 0.76,
+      "acc": 0.788,
+      "mini_heart": 0.991,
+      "raise_right_hand": 0.699,
+      "raise_left_hand": 0.612,
+      "idle": 0.717,
+      "t_pose": 0.526,
+      "ok": 0.96,
+      "laying": 0.678
+    },
+    "test": {
+      "macro_f1": 0.837,
+      "real_eval": 0.805,
+      "acc": 0.904,
+      "mini_heart": 0.302,
+      "raise_right_hand": 0.683,
+      "raise_left_hand": 0.842,
+      "idle": 0.752,
+      "t_pose": 0.844,
+      "ok": 0.784,
+      "laying": 0.952
+    }
+  }
+]

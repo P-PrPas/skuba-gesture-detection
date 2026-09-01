@@ -1,0 +1,257 @@
+{
+  "note": "MLP, 5 seeds (0-4), scored on test.npz by classifier/evaluate.py. values [mean, sd].",
+  "seeds": [
+    0,
+    1,
+    2,
+    3,
+    4
+  ],
+  "feature_modes": {
+    "both": {
+      "dim": 189,
+      "per_seed": [
+        {
+          "seed": 0,
+          "macro_f1": 0.872,
+          "real_eval": 0.847,
+          "acc": 0.915,
+          "conf_ok": 0.855,
+          "conf_wrong": 0.477,
+          "T": 1.0,
+          "mini_heart": 0.732,
+          "raise_right_hand": 0.757,
+          "raise_left_hand": 0.769,
+          "idle": 0.761,
+          "t_pose": 0.879
+        },
+        {
+          "seed": 1,
+          "macro_f1": 0.893,
+          "real_eval": 0.871,
+          "acc": 0.923,
+          "conf_ok": 0.864,
+          "conf_wrong": 0.494,
+          "T": 0.9,
+          "mini_heart": 0.8,
+          "raise_right_hand": 0.784,
+          "raise_left_hand": 0.825,
+          "idle": 0.776,
+          "t_pose": 0.899
+        },
+        {
+          "seed": 2,
+          "macro_f1": 0.864,
+          "real_eval": 0.838,
+          "acc": 0.911,
+          "conf_ok": 0.862,
+          "conf_wrong": 0.462,
+          "T": 0.9,
+          "mini_heart": 0.636,
+          "raise_right_hand": 0.773,
+          "raise_left_hand": 0.784,
+          "idle": 0.745,
+          "t_pose": 0.886
+        },
+        {
+          "seed": 3,
+          "macro_f1": 0.901,
+          "real_eval": 0.881,
+          "acc": 0.932,
+          "conf_ok": 0.837,
+          "conf_wrong": 0.535,
+          "T": 1.0,
+          "mini_heart": 0.902,
+          "raise_right_hand": 0.788,
+          "raise_left_hand": 0.86,
+          "idle": 0.776,
+          "t_pose": 0.848
+        },
+        {
+          "seed": 4,
+          "macro_f1": 0.874,
+          "real_eval": 0.849,
+          "acc": 0.913,
+          "conf_ok": 0.859,
+          "conf_wrong": 0.504,
+          "T": 0.9,
+          "mini_heart": 0.831,
+          "raise_right_hand": 0.729,
+          "raise_left_hand": 0.762,
+          "idle": 0.781,
+          "t_pose": 0.879
+        }
+      ],
+      "summary": {
+        "macro_f1": [
+          0.881,
+          0.014
+        ],
+        "real_eval": [
+          0.857,
+          0.016
+        ],
+        "acc": [
+          0.919,
+          0.008
+        ],
+        "mini_heart": [
+          0.78,
+          0.09
+        ],
+        "raise_right_hand": [
+          0.766,
+          0.021
+        ],
+        "raise_left_hand": [
+          0.8,
+          0.037
+        ],
+        "idle": [
+          0.768,
+          0.013
+        ],
+        "t_pose": [
+          0.878,
+          0.017
+        ],
+        "conf_ok": [
+          0.855,
+          0.01
+        ],
+        "conf_wrong": [
+          0.494,
+          0.025
+        ]
+      }
+    },
+    "body_raw_hands_derived": {
+      "dim": 105,
+      "per_seed": [
+        {
+          "seed": 0,
+          "macro_f1": 0.896,
+          "real_eval": 0.876,
+          "acc": 0.919,
+          "conf_ok": 0.83,
+          "conf_wrong": 0.482,
+          "T": 1.0,
+          "mini_heart": 0.881,
+          "raise_right_hand": 0.723,
+          "raise_left_hand": 0.812,
+          "idle": 0.839,
+          "t_pose": 0.882
+        },
+        {
+          "seed": 1,
+          "macro_f1": 0.905,
+          "real_eval": 0.887,
+          "acc": 0.931,
+          "conf_ok": 0.834,
+          "conf_wrong": 0.488,
+          "T": 1.0,
+          "mini_heart": 0.881,
+          "raise_right_hand": 0.8,
+          "raise_left_hand": 0.816,
+          "idle": 0.863,
+          "t_pose": 0.866
+        },
+        {
+          "seed": 2,
+          "macro_f1": 0.893,
+          "real_eval": 0.873,
+          "acc": 0.927,
+          "conf_ok": 0.846,
+          "conf_wrong": 0.514,
+          "T": 1.0,
+          "mini_heart": 0.892,
+          "raise_right_hand": 0.807,
+          "raise_left_hand": 0.752,
+          "idle": 0.816,
+          "t_pose": 0.899
+        },
+        {
+          "seed": 3,
+          "macro_f1": 0.846,
+          "real_eval": 0.816,
+          "acc": 0.892,
+          "conf_ok": 0.86,
+          "conf_wrong": 0.486,
+          "T": 1.0,
+          "mini_heart": 0.902,
+          "raise_right_hand": 0.814,
+          "raise_left_hand": 0.788,
+          "idle": 0.222,
+          "t_pose": 0.886
+        },
+        {
+          "seed": 4,
+          "macro_f1": 0.834,
+          "real_eval": 0.801,
+          "acc": 0.887,
+          "conf_ok": 0.856,
+          "conf_wrong": 0.463,
+          "T": 1.0,
+          "mini_heart": 0.881,
+          "raise_right_hand": 0.831,
+          "raise_left_hand": 0.734,
+          "idle": 0.209,
+          "t_pose": 0.882
+        }
+      ],
+      "summary": {
+        "macro_f1": [
+          0.875,
+          0.029
+        ],
+        "real_eval": [
+          0.851,
+          0.035
+        ],
+        "acc": [
+          0.911,
+          0.018
+        ],
+        "mini_heart": [
+          0.887,
+          0.008
+        ],
+        "raise_right_hand": [
+          0.795,
+          0.037
+        ],
+        "raise_left_hand": [
+          0.78,
+          0.033
+        ],
+        "idle": [
+          0.59,
+          0.306
+        ],
+        "t_pose": [
+          0.883,
+          0.011
+        ],
+        "conf_ok": [
+          0.845,
+          0.012
+        ],
+        "conf_wrong": [
+          0.487,
+          0.016
+        ]
+      }
+    }
+  },
+  "one_seed_also_ran": {
+    "raw": {
+      "dim": 152,
+      "real_eval": 0.846
+    },
+    "derived": {
+      "dim": 39,
+      "real_eval": 0.673
+    }
+  },
+  "decision": "lock stays 'both' \u2014 body_raw_hands_derived misses the >=0.86 real-eval bar, is less stable, and collapses idle F1 to ~0.21 on 2/5 seeds (idle is a CLAUDE.md-mandated class)."
+}

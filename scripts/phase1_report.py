@@ -18,8 +18,31 @@ from pathlib import Path
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 
+import sys
+
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+from pareto_scatter import pareto_scatter  # noqa: E402
+
 OUT = ROOT / "results" / "phase1"
+
+# keypoint-quality score, 0-100, digitised from the section-5 montage review
+# (the QUALITY notes below). Rubric: 100 = clean skeleton, no flyaway keypoints,
+# single-person (no bystander pickup); -30 flyaway/corner keypoints, -15 bystander
+# lock-on, -8 implausible on worst occluded frames, -5 detector picks bystander
+# in a minority of frames. Latency is NOT in this score (it is the x-axis).
+QUALITY_SCORE = {
+    "mediapipe_tasks_lite": 95,
+    "mediapipe_tasks_full": 92,
+    "mediapipe_tasks_heavy": 93,
+    "mediapipe_pose": 88,
+    "rtmpose_balanced": 90,
+    "rtmpose_lightweight": 78,
+    "yolo11s-pose": 55,
+    "yolo11n-pose": 45,
+}
+# backbones that only make sense to run on the GPU -> plot their CUDA point
+GPU_NATIVE = {"yolo11n-pose", "yolo11s-pose", "rtmpose_lightweight", "rtmpose_balanced"}
 
 POSE_LABEL = {
     "mediapipe_pose": "MediaPipe Pose (Solutions API)",
@@ -74,6 +97,49 @@ def scorecard_rows(cpu, gpu):
 def _load(dev):
     p = OUT / f"metrics_{dev}.json"
     return json.loads(p.read_text()) if p.exists() else None
+
+
+def _backbone_scatter(cpu, gpu):
+    """Speed vs keypoint-quality, one point per backbone at the device you would
+    actually deploy it on: MediaPipe on CPU (0 VRAM), YOLO/RTMPose on CUDA."""
+    short = {
+        "mediapipe_tasks_lite": "MP Tasks-lite", "mediapipe_tasks_full": "MP Tasks-full",
+        "mediapipe_tasks_heavy": "MP Tasks-heavy", "mediapipe_pose": "MP Pose (Solutions)",
+        "rtmpose_lightweight": "RTMPose-t", "rtmpose_balanced": "RTMPose-m",
+        "yolo11n-pose": "YOLO11n-pose", "yolo11s-pose": "YOLO11s-pose",
+    }
+    nudge = {"mediapipe_tasks_full": (0, 10), "mediapipe_pose": (0, -12),
+             "rtmpose_balanced": (0, -14), "mediapipe_tasks_heavy": (0, 4)}
+    pts = []
+    for key, q in QUALITY_SCORE.items():
+        src, dev = (gpu or cpu), "CUDA"
+        v = src.get("pose", {}).get(key) if key in GPU_NATIVE else None
+        if v is None or "cuda" not in v.get("device_actual", ""):
+            v, dev = cpu["pose"].get(key), "CPU"
+        if not v:
+            continue
+        ms = v["clips"].get("squat", {}).get("ms_mean", 0)
+        vram = (v.get("vram") or {}).get("model_mb") or 0.0
+        pts.append({"name": short.get(key, key), "x": ms, "y": q, "size": vram,
+                    "group": dev, "star": bool(RECOMMEND.get(key)),
+                    "label_offset": nudge.get(key, (0, 0))})
+    out = OUT / "fig" / "backbone_scatter.png"
+    pareto_scatter(pts, xlabel="latency — squat clip (ms/frame, log)",
+                   ylabel="keypoint-quality score (montage review, 0–100)",
+                   title="Phase 1 backbones — speed vs keypoint quality "
+                         "(bubble = VRAM, marker = device)",
+                   out=out, xlog=True, size_label="VRAM (MB)",
+                   note="quality score digitised from the section-5 montage review; "
+                        "MediaPipe plotted on CPU (0 VRAM), YOLO/RTMPose on CUDA. "
+                        "gold star = recommended.")
+    return out
+
+
+def _fig(doc, path: Path, width=6.4):
+    if Path(path).exists():
+        doc.add_picture(str(path), width=Inches(width))
+    else:
+        doc.add_paragraph(f"[missing figure {Path(path).name}]")
 
 
 def _cell(table, r, c, text, bold=False):
@@ -164,6 +230,21 @@ def main():
         "is 0 on CPU and small-but-unmeasured on the Linux GL delegate. 'Detect' = "
         "frames with a person found, averaged over the three posture clips."
     ).runs[0].font.size = Pt(9)
+
+    doc.add_heading("Speed vs keypoint quality — the Pareto view", 2)
+    doc.add_paragraph(
+        "Paper-style scatter of the whole field: x = per-frame latency (log "
+        "scale, lower is better), y = keypoint-quality score digitised from the "
+        "montage review in section 5 (higher is better), bubble area = VRAM, "
+        "marker shape = the device each backbone is plotted on (MediaPipe on "
+        "CPU, YOLO/RTMPose on their native CUDA path). Points on the green "
+        "dashed line are Pareto-optimal. MediaPipe Tasks-lite sits top-left with "
+        "a zero-VRAM bubble: as fast as the quickest CUDA option (YOLO11s, "
+        "21 ms) but with clean single-person keypoints and no GPU cost. "
+        "Everything else is slower, lower-quality, or carries hundreds of MB of "
+        "VRAM."
+    ).runs[0].font.size = Pt(9)
+    _fig(doc, _backbone_scatter(cpu, gpu), width=6.2)
 
     doc.add_heading("1. Test setup", 1)
     doc.add_paragraph(

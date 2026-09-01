@@ -118,10 +118,11 @@ the classification layer + the existing feature data.
   one class must not silently break another.
 
 **Deliverable — DONE:** locked config = **MLP, `--features both`, seed 0**
-(`classifier/models/mlp.joblib`); rationale in `docs/phase4_baseline.md`
-(Track C model comparison + Track B/D/E lever exploration). Report docx
-(`results/phase4/classifier_report.docx`) covers the model comparison; not
-regenerated for B/D/E since the pick config is unchanged.
+(`classifier/models/mlp.joblib`); rationale in `docs/phase4_baseline.md`.
+Report: `results/phase4/classifier_report.docx` — model comparison (Track C) +
+Track B/D/E sections + a paper-style accuracy-vs-size Pareto scatter
+(`scripts/pareto_scatter.py`, also added to the Phase 1 backbone report as a
+speed-vs-keypoint-quality scatter).
 
 **Exit criterion:** met within the 2-subject data limit — real-eval macro-F1
 0.857 ± 0.016, `sit`@s02 (unseen person) = 1.0, no catastrophic confusion pair.

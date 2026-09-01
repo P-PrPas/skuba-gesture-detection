@@ -145,3 +145,8 @@ Tracks B/D/E each explored a lever and each confirmed the current config is the
 one to ship. Remaining weak classes (`mini_heart` 0.73, `raise_*_hand` 0.76,
 `idle` precision 0.62 on test) are data/feature-gap limited, not
 hyperparameter-limited — Phase 6 field recordings are the next real lever.
+
+Report: `results/phase4/classifier_report.docx` (regenerated — model comparison
++ Track B/D/E sections + a paper-style accuracy-vs-size Pareto scatter). Source
+data: `results/phase4/{model_comparison,track_b_seeds,track_d,track_e}.json`.
+Regenerate with `python -m classifier.evaluate --all && python -m classifier.thresholds --model mlp && python scripts/phase4_report.py`.
