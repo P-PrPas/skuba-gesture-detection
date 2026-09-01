@@ -68,18 +68,56 @@ real-generalisation classes**, every class ≥ 0.6. Report:
   1.00). `squat` reverted — COCO's squat labels are shallow crouches that
   overlap `sit`; stays aug(s01)-only, needs a real squat dataset.
 - Per-class thresholds + idle fallback: carried into Phase 4/5.
-- LightGBM vs RF head-to-head: deferred to Colab in Phase 4 (laptop RAM).
+- LightGBM vs RF head-to-head: **done** (both trained 12-class, harness-scored —
+  RF 0.84 / LGBM 0.83; RF default, calibration-limited LGBM a Phase 4 candidate).
 
 ## Phase 4 — Classifier iteration
 
 **Goal:** the actual experimentation phase — this is where most of the project's effort goes.
 
-- Compare feature representations: raw normalized coordinates vs. derived features (joint angles, inter-point distances) — `--features` flag already exists
-- Compare model families: LightGBM/RF vs. MLP vs. (if needed later) a small temporal model — run the LGBM/RF head-to-head on Colab (13-class), add the MLP, lock one
-- **Evaluate a hand-landmark model swap** — MediaPipe Hands can't resolve fine finger differences on s01's distant footage (caps rock/ok/two_finger at ~0.75, makes `i_love_you` unmodellable); this is the biggest lever left
-- Re-extract COCO with a person-bbox crop (COCO gives the bbox) — should lift raise_hand / t_pose recall (~0.75) by dropping wrong-person detections
-- Tune augmentation strength against validation performance — too little augmentation underfits generalization, too much washes out real class boundaries
-- Re-run full confusion matrix after every change; a fix for one class must not silently break another as the class count grows
+**Scope decision (2026-09-01):** the hand-landmark model swap and any COCO
+re-extraction are **cut** — the problem classes (i_love_you, rock, heart) are
+cut, time is limited, and the 12-class baseline is acceptable. Phase 4 stays on
+the classification layer + the existing feature data.
+
+### Track B — feature representation
+- Compare `raw` vs `derived` vs `both` vs `body_raw_hands_derived` (the
+  `--features` flag exists) for the leading model.
+
+### Track C — model family (the core; see `docs/phase4_classifiers.md`)
+- Add a **stratified `val` split** to `build_dataset.py` from the pre-augmentation
+  external rows (needed for early stopping, temperature scaling, threshold
+  tuning — must not touch `test.npz`).
+- `train.py --model {rf, lgbm, catboost, hgb, et, svm, mlp, logreg}` — each
+  emitting the same `{clf, classes, clip, features}` bundle; the eval harness
+  scores them identically.
+- Shortlist to actually run: **CatBoost** (ordered boosting → better calibrated
+  than LGBM, compact), **HistGradientBoosting** (no new dep, free data point),
+  **small regularised MLP + temperature scaling** (the plan's MLP done right,
+  <1 MB), **RBF-SVM on a ~15-20k subsample** (different inductive bias, tiny
+  model). Stretch: a **spatial GCN** (skeleton = graph; highest upside, real
+  overfitting risk on the ~1,250-row test).
+- Run **k-NN once** as a separability sanity check (not a candidate).
+- **Calibration is a separable layer** — pick the model on raw accuracy + size +
+  separability, then apply Platt / isotonic / temperature scaling and re-score
+  ECE + conf-correct-vs-wrong.
+- Shrink the RandomForest (max_depth / min_samples_leaf) — 419 MB is a
+  deployment liability regardless of whether RF stays the pick.
+
+### Track D — augmentation strength
+- Tune `AugParams` against the val split — too little underfits generalization,
+  too much washes out real class boundaries.
+
+### Track E — per-class confidence thresholds (bridges to Phase 5)
+- Tune a per-class threshold on the val slice for the idle/unknown fallback
+  (idle currently over-triggers, precision ~0.45).
+
+### Guardrail
+- `evaluate.py` confusion matrix + per-class after **every** change; a fix for
+  one class must not silently break another.
+
+**Deliverable:** one locked classifier config + `docs/phase4_baseline.md` with
+the rationale + a Phase 4 report regenerated from the harness outputs.
 
 **Deliverable:** final chosen classifier configuration with documented rationale for why it beat the alternatives.
 
