@@ -111,6 +111,35 @@ destabilises `idle`: F1 sd 0.31, collapsing to ~0.21 on 2 of 5 seeds. `idle` is
 a CLAUDE.md-mandated class — **lock stays at `both`.** The `mini_heart` signal
 is noted for a future feature-representation pass (Phase 6 field data).
 
+## Track C addendum — SE-MLP (`classifier/semlp.py`)
+
+Follow-up: does a feature-wise squeeze-and-excitation gate before the MLP trunk
+help? The gate reads the 189-d input and emits one multiplier per feature, so
+the trunk sees the currently-irrelevant slices damped. 5 seeds each, on `test`:
+
+| model | real-eval | macro-F1 | acc | idle F1 | conf ok/wrong |
+|---|---|---|---|---|---|
+| **plain MLP** *(LOCK)* | **0.857 ± 0.016** | 0.881 ± 0.014 | 0.919 | **0.768 ± 0.013** | 0.86 / 0.49 |
+| SE gate, hard (floor 0) | 0.822 ± 0.024 | 0.852 ± 0.020 | 0.897 | 0.281 ± 0.164 | 0.87 / 0.54 |
+| SE gate, floor 0.5 | 0.859 ± 0.018 | 0.882 ± 0.016 | 0.921 | 0.672 ± 0.233 | 0.86 / 0.51 |
+
+The hard gate regresses real-eval 3.5 pts and **collapses `idle` F1 to ~0.20 on
+4 of 5 seeds** — same failure as `body_raw_hands_derived` above. Flooring the
+gate at 0.5 (features damped at most to 50 %, never zeroed) recovers the
+accuracy — a genuine tie with plain MLP — but `idle` still collapses on 1/5
+seeds (sd 0.23 vs plain MLP's 0.013) and confidence separation is slightly
+worse. **Not adopted:** a tie on the good axes, worse on `idle` robustness, for
+more code and a new hyperparameter. The committed `semlp` candidate is floor
+0.5, seed 0 (best variant, for the record).
+
+Kept from the experiment: (1) the gate is **interpretable** and validates the
+feature-block design — it suppresses the off-hand for one-hand gestures
+(`raise_right`: left-hand block ≈ 0.16 vs right-hand ≈ 0.48; `raise_left` the
+mirror), leans on the joint-angle block for postures, and keeps that block the
+most open overall (0.49); (2) a **third independent confirmation** (with Track B)
+that `idle` is fragile to anything that reduces feature information — the
+residual "nothing happening" class needs the whole vector to rule gestures out.
+
 ## Track D — augmentation strength
 
 Rebuilt the dataset under 4 `AugParams` variants (via `AUG_OVERRIDE` /

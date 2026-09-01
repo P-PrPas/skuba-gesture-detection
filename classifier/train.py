@@ -31,7 +31,7 @@ DS = ROOT / "data" / "dataset"
 MODELS = ROOT / "classifier" / "models"
 CLIP = 10.0
 
-CANDIDATES = ["rf", "lgbm", "catboost", "hgb", "et", "svm", "logreg", "mlp"]
+CANDIDATES = ["rf", "lgbm", "catboost", "hgb", "et", "svm", "logreg", "mlp", "semlp"]
 
 # classes whose train rows are augmented s01/s02 only -> the model should need
 # strong evidence before predicting one. sit + laying moved out when the COCO
@@ -121,9 +121,17 @@ def build_mlp(y):
     return TorchMLP(n_classes=len(CLASSES), class_weight=_weights(y), seed=0)
 
 
+def build_semlp(y):
+    from classifier.semlp import TorchSEMLP
+    # se_floor=0.5: a hard gate (0) starved the `idle` class and collapsed its
+    # recall on 4/5 seeds (docs/phase4_baseline.md, SE-MLP addendum).
+    return TorchSEMLP(n_classes=len(CLASSES), class_weight=_weights(y),
+                      se_floor=0.5, seed=0)
+
+
 BUILDERS = {"rf": build_rf, "et": build_et, "lgbm": build_lgbm,
             "catboost": build_catboost, "hgb": build_hgb, "logreg": build_logreg,
-            "svm": build_svm, "mlp": build_mlp}
+            "svm": build_svm, "mlp": build_mlp, "semlp": build_semlp}
 
 
 # --------------------------------------------------------------------------- #
@@ -143,7 +151,7 @@ def train_one(model: str, feat_mode: str):
 
     clf = BUILDERS[model](ytr)
     t0 = time.time()
-    if model == "mlp" and val is not None:
+    if model in ("mlp", "semlp") and val is not None:
         clf.fit(Xtr, ytr, val[0], val[1])
     else:
         clf.fit(Xtr, ytr)

@@ -1,0 +1,293 @@
+{
+  "note": "SE-gated MLP (classifier/semlp.py) \u2014 feature-wise squeeze-excite gate before the TorchMLP trunk. MLP, 5 seeds (0-4), scored on test.npz. values [mean, sd].",
+  "plain_mlp_5seed": {
+    "real_eval": [
+      0.857,
+      0.016
+    ],
+    "macro_f1": [
+      0.881,
+      0.014
+    ],
+    "acc": [
+      0.919,
+      0.008
+    ],
+    "idle": [
+      0.768,
+      0.013
+    ]
+  },
+  "variants": {
+    "se_floor_0.0": {
+      "per_seed": [
+        {
+          "seed": 0,
+          "macro_f1": 0.849,
+          "real_eval": 0.818,
+          "acc": 0.896,
+          "conf_ok": 0.856,
+          "conf_wrong": 0.533,
+          "T": 1.0,
+          "mini_heart": 0.889,
+          "raise_right_hand": 0.802,
+          "raise_left_hand": 0.851,
+          "idle": 0.194,
+          "t_pose": 0.857,
+          "ok": 0.784,
+          "laying": 0.966
+        },
+        {
+          "seed": 1,
+          "macro_f1": 0.847,
+          "real_eval": 0.817,
+          "acc": 0.889,
+          "conf_ok": 0.869,
+          "conf_wrong": 0.554,
+          "T": 1.0,
+          "mini_heart": 0.916,
+          "raise_right_hand": 0.795,
+          "raise_left_hand": 0.808,
+          "idle": 0.207,
+          "t_pose": 0.896,
+          "ok": 0.784,
+          "laying": 0.931
+        },
+        {
+          "seed": 2,
+          "macro_f1": 0.889,
+          "real_eval": 0.867,
+          "acc": 0.92,
+          "conf_ok": 0.868,
+          "conf_wrong": 0.524,
+          "T": 1.0,
+          "mini_heart": 0.916,
+          "raise_right_hand": 0.798,
+          "raise_left_hand": 0.851,
+          "idle": 0.608,
+          "t_pose": 0.879,
+          "ok": 0.784,
+          "laying": 0.959
+        },
+        {
+          "seed": 3,
+          "macro_f1": 0.828,
+          "real_eval": 0.794,
+          "acc": 0.889,
+          "conf_ok": 0.9,
+          "conf_wrong": 0.59,
+          "T": 0.9,
+          "mini_heart": 0.732,
+          "raise_right_hand": 0.819,
+          "raise_left_hand": 0.762,
+          "idle": 0.196,
+          "t_pose": 0.844,
+          "ok": 0.784,
+          "laying": 0.966
+        },
+        {
+          "seed": 4,
+          "macro_f1": 0.845,
+          "real_eval": 0.816,
+          "acc": 0.891,
+          "conf_ok": 0.869,
+          "conf_wrong": 0.52,
+          "T": 0.9,
+          "mini_heart": 0.916,
+          "raise_right_hand": 0.798,
+          "raise_left_hand": 0.833,
+          "idle": 0.2,
+          "t_pose": 0.844,
+          "ok": 0.784,
+          "laying": 0.953
+        }
+      ],
+      "summary": {
+        "macro_f1": [
+          0.852,
+          0.02
+        ],
+        "real_eval": [
+          0.822,
+          0.024
+        ],
+        "acc": [
+          0.897,
+          0.012
+        ],
+        "conf_ok": [
+          0.872,
+          0.015
+        ],
+        "conf_wrong": [
+          0.544,
+          0.026
+        ],
+        "mini_heart": [
+          0.874,
+          0.072
+        ],
+        "raise_right_hand": [
+          0.802,
+          0.009
+        ],
+        "raise_left_hand": [
+          0.821,
+          0.033
+        ],
+        "idle": [
+          0.281,
+          0.164
+        ],
+        "t_pose": [
+          0.864,
+          0.02
+        ],
+        "ok": [
+          0.784,
+          0.0
+        ],
+        "laying": [
+          0.955,
+          0.013
+        ]
+      }
+    },
+    "se_floor_0.5": {
+      "per_seed": [
+        {
+          "seed": 0,
+          "macro_f1": 0.892,
+          "real_eval": 0.871,
+          "acc": 0.931,
+          "conf_ok": 0.858,
+          "conf_wrong": 0.506,
+          "T": 1.0,
+          "mini_heart": 0.784,
+          "raise_right_hand": 0.753,
+          "raise_left_hand": 0.851,
+          "idle": 0.797,
+          "t_pose": 0.862,
+          "ok": 0.784,
+          "laying": 0.966
+        },
+        {
+          "seed": 1,
+          "macro_f1": 0.855,
+          "real_eval": 0.827,
+          "acc": 0.899,
+          "conf_ok": 0.896,
+          "conf_wrong": 0.558,
+          "T": 1.0,
+          "mini_heart": 0.902,
+          "raise_right_hand": 0.795,
+          "raise_left_hand": 0.86,
+          "idle": 0.207,
+          "t_pose": 0.896,
+          "ok": 0.789,
+          "laying": 0.966
+        },
+        {
+          "seed": 2,
+          "macro_f1": 0.885,
+          "real_eval": 0.862,
+          "acc": 0.925,
+          "conf_ok": 0.85,
+          "conf_wrong": 0.511,
+          "T": 1.0,
+          "mini_heart": 0.784,
+          "raise_right_hand": 0.761,
+          "raise_left_hand": 0.8,
+          "idle": 0.792,
+          "t_pose": 0.879,
+          "ok": 0.8,
+          "laying": 0.908
+        },
+        {
+          "seed": 3,
+          "macro_f1": 0.901,
+          "real_eval": 0.881,
+          "acc": 0.927,
+          "conf_ok": 0.847,
+          "conf_wrong": 0.513,
+          "T": 1.0,
+          "mini_heart": 0.902,
+          "raise_right_hand": 0.805,
+          "raise_left_hand": 0.833,
+          "idle": 0.783,
+          "t_pose": 0.844,
+          "ok": 0.8,
+          "laying": 0.945
+        },
+        {
+          "seed": 4,
+          "macro_f1": 0.879,
+          "real_eval": 0.855,
+          "acc": 0.921,
+          "conf_ok": 0.859,
+          "conf_wrong": 0.455,
+          "T": 1.0,
+          "mini_heart": 0.732,
+          "raise_right_hand": 0.807,
+          "raise_left_hand": 0.741,
+          "idle": 0.781,
+          "t_pose": 0.896,
+          "ok": 0.784,
+          "laying": 0.938
+        }
+      ],
+      "summary": {
+        "macro_f1": [
+          0.882,
+          0.016
+        ],
+        "real_eval": [
+          0.859,
+          0.018
+        ],
+        "acc": [
+          0.921,
+          0.011
+        ],
+        "conf_ok": [
+          0.862,
+          0.018
+        ],
+        "conf_wrong": [
+          0.509,
+          0.033
+        ],
+        "mini_heart": [
+          0.821,
+          0.069
+        ],
+        "raise_right_hand": [
+          0.784,
+          0.023
+        ],
+        "raise_left_hand": [
+          0.817,
+          0.043
+        ],
+        "idle": [
+          0.672,
+          0.233
+        ],
+        "t_pose": [
+          0.875,
+          0.02
+        ],
+        "ok": [
+          0.791,
+          0.007
+        ],
+        "laying": [
+          0.945,
+          0.021
+        ]
+      }
+    }
+  },
+  "decision": "not adopted. floor-0 regresses real-eval 3.5 pts and collapses idle F1 to ~0.20 on 4/5 seeds; floor-0.5 ties plain MLP on accuracy but idle still collapses on 1/5 seeds (sd 0.23 vs plain MLP 0.013) and confidence separation is slightly worse. No gain for more code + a new hyperparameter. Committed `semlp` candidate = floor 0.5, seed 0 (the best variant, for the record).",
+  "finding": "third independent confirmation (after Track B body_raw_hands_derived) that the idle class is fragile to anything reducing feature information \u2014 it needs the full vector to rule gestures out. The SE gate itself is interpretable and validates the feature-block design (suppresses the off-hand for one-hand gestures, leans on the joint-angle block for postures)."
+}

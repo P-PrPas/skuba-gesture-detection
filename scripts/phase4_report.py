@@ -36,7 +36,7 @@ GREEN = RGBColor(0x1A, 0x7F, 0x37)
 AMBER = RGBColor(0x88, 0x66, 0x00)
 
 # nicer display order (best-known first)
-ORDER = ["lgbm", "catboost", "hgb", "rf", "et", "svm", "mlp", "logreg"]
+ORDER = ["lgbm", "catboost", "hgb", "rf", "et", "svm", "mlp", "semlp", "logreg"]
 HEADLINE_ROWS = [
     ("macro_f1", "macro-F1 (12)"),
     ("macro_f1_real_eval", "macro-F1 (real-eval)"),
@@ -79,28 +79,74 @@ def _fig(doc, path: Path, width=6.4):
 
 
 def _classifier_scatter(hl, models):
+    # the two torch models are stochastic — plot their 5-seed MEAN real-eval, not
+    # the lucky/unlucky single seed, so the frontier is honest. tree/linear
+    # models are deterministic single fits.
+    sm = _bde("semlp") or {}
+    seed_mean = {"mlp": (sm.get("plain_mlp_5seed") or {}).get("real_eval", [None])[0],
+                 "semlp": ((sm.get("variants") or {}).get("se_floor_0.5", {})
+                           .get("summary", {}).get("real_eval", [None])[0])}
     pts = []
     for m in models:
         h = hl[m]
         gap = ((h.get("mean_conf_correct") or 0) - (h.get("mean_conf_wrong") or 0))
+        y = seed_mean.get(m) or h.get("macro_f1_real_eval") or 0.0
+        off = {"mlp": (-4, 9), "semlp": (10, -14)}.get(m, (0, 0))
         pts.append({"name": m.upper(),
                     "x": max(h.get("model_size_mb") or 0.0, 0.05),
-                    "y": h.get("macro_f1_real_eval") or 0.0,
-                    "size": max(gap, 0.02),
-                    "star": m == LOCK})
+                    "y": y, "size": max(gap, 0.02), "star": m == LOCK,
+                    "label_offset": off})
     out = FIG / "compare_scatter.png"
     pareto_scatter(pts, xlabel="model size on disk (MB, log)",
                    ylabel="real-eval macro-F1",
                    title="Phase 4 classifiers — accuracy vs size (bubble = confidence separation)",
                    out=out, xlog=True, size_label="conf(correct) − conf(wrong)",
-                   note="Pareto-optimal = green dashed line; gold star = locked pick. "
-                        "bubble area proportional to mean(conf|correct) - mean(conf|wrong).")
+                   note="MLP/SEMLP = 5-seed mean real-eval; others = single deterministic fit. "
+                        "Pareto-optimal = green dashed line; gold star = locked pick.")
     return out
 
 
 def _bde(name):
     p = OUT / f"{name}.json"
     return json.loads(p.read_text()) if p.exists() else None
+
+
+def _semlp_section(doc):
+    d = _bde("semlp")
+    doc.add_heading("4b. SE-MLP — a squeeze-and-excitation variant", 1)
+    if not d:
+        doc.add_paragraph("[results/phase4/semlp.json missing]")
+        return
+    doc.add_paragraph(
+        "Follow-up asked after the MLP lock: does a feature-wise "
+        "squeeze-and-excitation gate before the MLP trunk help? The gate "
+        "(classifier/semlp.py) reads the whole 189-d input and emits one "
+        "multiplier per feature, so the trunk sees the currently-irrelevant "
+        "slices damped. Two variants, 5 seeds each, scored on test:")
+    pm = d["plain_mlp_5seed"]
+    rows = [["plain MLP (lock)", f"{pm['real_eval'][0]:.3f} ± {pm['real_eval'][1]:.3f}",
+             f"{pm['macro_f1'][0]:.3f} ± {pm['macro_f1'][1]:.3f}",
+             f"{pm['acc'][0]:.3f} ± {pm['acc'][1]:.3f}",
+             f"{pm['idle'][0]:.3f} ± {pm['idle'][1]:.3f}"]]
+    colors = [GREEN]
+    for key, label in (("se_floor_0.0", "SE gate (hard, floor 0)"),
+                       ("se_floor_0.5", "SE gate (floor 0.5)")):
+        s = d["variants"][key]["summary"]
+        rows.append([label, f"{s['real_eval'][0]:.3f} ± {s['real_eval'][1]:.3f}",
+                     f"{s['macro_f1'][0]:.3f} ± {s['macro_f1'][1]:.3f}",
+                     f"{s['acc'][0]:.3f} ± {s['acc'][1]:.3f}",
+                     f"{s['idle'][0]:.3f} ± {s['idle'][1]:.3f}"])
+        colors.append(None)
+    _table(doc, ["model", "real-eval", "macro-F1", "acc", "idle F1"], rows, colors)
+    dec = d["decision"]
+    doc.add_paragraph(dec[:1].upper() + dec[1:])
+    doc.add_paragraph(
+        "Worth keeping: the gate is interpretable — it suppresses the off-hand "
+        "for one-hand gestures (raise_right → left-hand block ≈ 0.16, right-hand "
+        "≈ 0.48; raise_left the mirror), leans on the joint-angle block for "
+        "postures, and keeps that block the most open overall. This is a third "
+        "independent confirmation (with Track B's body_raw_hands_derived) that "
+        "the idle class is fragile to anything that reduces feature information.")
 
 
 def _track_b(doc):
@@ -253,12 +299,14 @@ def main():
         "area = confidence separation (mean conf when correct minus when wrong — "
         "the bigger the bubble the more usable the Phase 5 idle threshold). "
         "Points on the green dashed line are Pareto-optimal (nothing beats them "
-        "on both axes); the gold star is the locked pick. Only LightGBM and MLP "
-        "sit on the frontier: LightGBM edges MLP on F1 but at 100x the size and "
-        "a third of the confidence spread. Every other candidate — including "
-        "CatBoost and HistGradientBoosting, run to close the GBDT-family gap — "
-        "is dominated: 3–11 real-eval points behind LightGBM at equal or larger "
-        "size. The GBDT family does not cluster (section 8).")
+        "on both axes); the gold star is the locked pick. The frontier is "
+        "LogReg → MLP/SE-MLP (statistically tied, overlapping) → LightGBM: "
+        "LightGBM edges the MLPs on F1 but at 100x the size and a third of the "
+        "confidence spread. Every other candidate — including CatBoost and "
+        "HistGradientBoosting, run to close the GBDT-family gap — is dominated: "
+        "3–11 real-eval points behind LightGBM at equal or larger size. The GBDT "
+        "family does not cluster (section 8); the SE gate does not help "
+        "(section 4b).")
     _fig(doc, scat, width=6.0)
 
     doc.add_heading("2. Per-class F1", 1)
@@ -302,6 +350,7 @@ def main():
             f = P3FIG / name
         _fig(doc, f)
 
+    _semlp_section(doc)
     _track_b(doc)
     _track_d(doc)
     _track_e(doc)
@@ -315,14 +364,15 @@ def main():
         "0.49 wrong) wide enough to drive the Phase 5 idle threshold without a "
         "separate calibration step.")
     doc.add_paragraph(
-        "All 8 candidates were trained and scored (section 1), including "
-        "CatBoost, HistGradientBoosting, RBF-SVM and ExtraTrees — the four an "
-        "earlier session had left unrun. They do not change the pick: the GBDT "
-        "family does not cluster around LightGBM as had been assumed (CatBoost "
-        "−8, HGB −5.5 real-eval points at the screening configs), and none of "
-        "the four beats LightGBM or MLP on any axis that matters. HGB is the "
-        "best-calibrated model of the lot (ECE 0.022) but trails MLP on both "
-        "accuracy and confidence spread.")
+        "All 9 candidates were trained and scored (section 1): the original "
+        "four, plus CatBoost / HistGradientBoosting / RBF-SVM / ExtraTrees "
+        "(an earlier session had left them unrun), plus the SE-MLP variant "
+        "(section 4b). None changes the pick. The GBDT family does not cluster "
+        "around LightGBM as had been assumed (CatBoost −8, HGB −5.5 real-eval "
+        "points at the screening configs); HGB is the best-calibrated model of "
+        "the lot (ECE 0.022) but trails MLP on accuracy and confidence spread; "
+        "and the SE gate ties plain MLP at best while making the idle class less "
+        "stable. Plain MLP wins on Occam.")
     doc.add_paragraph(
         "Tracks B/D/E each tested one lever and each confirmed the current "
         "config: 'both' features beat the leaner alternative on stability, the "

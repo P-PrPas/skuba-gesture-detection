@@ -99,6 +99,10 @@ the classification layer + the existing feature data.
   deployment: 0.3 MB vs 31 MB, confidence separates right/wrong (0.85 vs 0.48)
   for the Phase 5 idle threshold with no calibration step. LightGBM piles ~80 %
   of predictions at conf ~1.0 → would need Platt/isotonic first.
+- SE-MLP follow-up (`classifier/semlp.py`, feature-wise squeeze-excite gate):
+  not adopted — hard gate collapses `idle` (4/5 seeds), floored gate ties plain
+  MLP on accuracy but `idle` still collapses 1/5 seeds. `docs/phase4_baseline.md`
+  "Track C addendum".
 - Feature-set comparison for the chosen model → Track B below.
 
 ### Track D — augmentation strength — DONE

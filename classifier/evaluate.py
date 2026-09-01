@@ -306,7 +306,7 @@ def _run_one(name: str, split: str = "test") -> dict:
 
 
 # canonical order for figures/tables (best-known first)
-_ORDER = ["rf", "et", "lgbm", "catboost", "hgb", "svm", "logreg", "mlp", "gcn"]
+_ORDER = ["rf", "et", "lgbm", "catboost", "hgb", "svm", "logreg", "mlp", "semlp", "gcn"]
 
 
 def main():
