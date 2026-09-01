@@ -99,7 +99,7 @@ def pareto_scatter(points, *, xlabel, ylabel, title, out: Path,
                    edgecolor="#0b2038", label=g)
 
     if xlog:
-        ax.set_xlim(min(xs) / 1.6, max(xs) * 2.4)
+        ax.set_xlim(min(xs) / 1.8, max(xs) * 3.6)
     else:
         pad = 0.12 * (max(xs) - min(xs) + 1e-9)
         ax.set_xlim(min(xs) - pad, max(xs) + pad)
