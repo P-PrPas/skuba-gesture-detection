@@ -51,7 +51,10 @@ PENDING_DATA = {"i_love_you", "heart"}
 # external row into raised-arm variants before the normal augmentation.
 ARMS_UP = {"mini_heart"}
 
-# no external source -> train on augmented s01/s02, test on the originals
+# fallback only — used when a class has NO external source. sit/squat/laying are
+# listed so they still build if the COCO posture mine yields nothing; once
+# data/features_ext/coco_pose__{sit,squat,laying}.npz exist they take the
+# external (cross_domain) path instead.
 AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
 # aux external labels that are really "not a target gesture"
 AUX_TO_CLASS = {"_ily_negative": "idle", "_coco_idle": "idle"}
@@ -88,6 +91,18 @@ def _clean_external(X: np.ndarray, cls: str) -> np.ndarray:
         sho_w = np.abs(b[:, _LSHO, 0] - b[:, _RSHO, 0]) + 1e-6
         keep &= (np.abs(b[:, _LWRI, 1] - sho_y) < 0.5) & (np.abs(b[:, _RWRI, 1] - sho_y) < 0.5)
         keep &= np.abs(b[:, _LWRI, 0] - b[:, _RWRI, 0]) > 2.0 * sho_w
+    elif cls in ("sit", "squat", "laying"):
+        # re-verify the COCO 2D auto-label against MediaPipe's normalized body
+        # (units ~= shoulder-hip distance). 11/12 sho, 23/24 hip, 25/26 knee.
+        sho_m = (b[:, 11] + b[:, 12]) / 2
+        hip_m = (b[:, 23] + b[:, 24]) / 2
+        knee_dy = (b[:, 25, 1] + b[:, 26, 1]) / 2 - hip_m[:, 1]      # + = knee below hip
+        spine_h = np.abs(sho_m[:, 0] - hip_m[:, 0]) > np.abs(sho_m[:, 1] - hip_m[:, 1])
+        if cls == "laying":
+            keep &= spine_h
+        else:
+            keep &= ~spine_h & (sho_m[:, 1] < hip_m[:, 1])          # upright torso
+            keep &= knee_dy < (0.5 if cls == "squat" else 1.2)      # hips low / thighs off-vertical
     return keep
 
 
@@ -164,7 +179,8 @@ def main():
         # ---- TRAIN ----
         if cls in PENDING_DATA:
             rec["eval_type"] = "pending_data"      # in test.npz only, never trained
-        elif cls in ext and cls not in AUG_ONLY:
+        elif cls in ext:                           # external data -> real cross-domain
+            # (AUG_ONLY is only the fallback for classes with no external source)
             Xe, _, _ = ext[cls]
             if cls == "thumb":
                 idx = rng.permutation(len(Xe))

@@ -5,7 +5,7 @@ features. Disk-safe — one parquet shard (or one image) at a time, deleted afte
     python -m pipeline.extract_external hagrid            # HaGRID v1 hand gestures
     python -m pipeline.extract_external hagrid_nogesture  # idle
     python -m pipeline.extract_external hagrid_v2_heart   # mini_heart
-    python -m pipeline.extract_external coco_pose         # t_pose, raise_*_hand, heart, idle
+    python -m pipeline.extract_external coco_pose         # t_pose, raise_*_hand, sit, squat, laying, idle
     python -m pipeline.extract_external roboflow_ily      # i_love_you  (needs ROBOFLOW_API_KEY)
 
 **Run on Colab / a box with >=8 GB free RAM** — the SKUBA laptop OOMs on a
@@ -259,15 +259,22 @@ def run_hf_parquet(source: str):
         print(f"  {c:22s} {sink.counts[c]}")
 
 
-# ---------------- COCO person-keypoints -> t_pose / raise_right_hand / idle ----------------
+# ---------------- COCO person-keypoints -> gestures + body postures ----------------
 _COCO_ANN = "http://images.cocodataset.org/annotations/annotations_trainval2017.zip"
 _COCO_IMG = "http://images.cocodataset.org/train2017/{:012d}.jpg"
-# COCO 17-kpt: 0 nose 5 Lsho 6 Rsho 7 Lelb 8 Relb 9 Lwri 10 Rwri 11 Lhip 12 Rhip 15 Lank 16 Rank
+# COCO 17-kpt: 0 nose 1/2 eyes 5/6 sho 7/8 elb 9/10 wri 11/12 hip 13/14 knee 15/16 ank
 
 
 def _coco_kp(ann):
     a = np.array(ann["keypoints"], np.float32).reshape(17, 3)  # x, y, v
     return a[:, :2], a[:, 2]
+
+
+def _angle(a, b, c) -> float:
+    """Angle at vertex b, in degrees."""
+    u, w = a - b, c - b
+    cs = float(u @ w) / (float(np.linalg.norm(u)) * float(np.linalg.norm(w)) + 1e-6)
+    return float(np.degrees(np.arccos(max(-1.0, min(1.0, cs)))))
 
 
 def _classify_coco(xy, v) -> str | None:
@@ -303,6 +310,27 @@ def _classify_coco(xy, v) -> str | None:
         right_low = (not ok(10)) or rwri[1] > rsho[1]
         if left_up and right_low:
             return "raise_left_hand"
+    # --- body posture: sit / squat / laying (checked before _coco_idle, since a
+    # seated person also has hands-down + upright). 2D heuristics -> MediaPipe
+    # re-verifies in build_dataset._clean_external -> human spot-checks samples.
+    if ok(5, 6, 11, 12, 13, 14):
+        lhip, rhip = xy[11], xy[12]
+        hip_y = (lhip[1] + rhip[1]) / 2
+        hip_x = (lhip[0] + rhip[0]) / 2
+        sho_x = (lsho[0] + rsho[0]) / 2
+        kne_y = (xy[13][1] + xy[14][1]) / 2
+        torso = abs(sho_y - hip_y) + 1e-6
+        if abs(sho_x - hip_x) > 1.3 * abs(sho_y - hip_y):
+            return "laying"                       # torso more horizontal than vertical
+        # upright torso from here; use the better-seen leg for the knee bend
+        legs = [(_angle(xy[h], xy[k], xy[a]), k) for h, k, a in ((11, 13, 15), (12, 14, 16))
+                if ok(h, k, a)]
+        knee = min(a for a, _ in legs) if legs else 180.0
+        drop = (kne_y - hip_y) / torso            # >1 standing, ~0 seated, <0 hips sunk
+        if knee < 105 and drop < 0.35:
+            return "squat"                        # deep bend, hips level with / below knees
+        if knee < 150 and -0.2 < drop < 1.0 and sho_y < hip_y:
+            return "sit"                          # thighs off-vertical, torso above hips
     if ok(5, 6, 9, 10, 11, 12):
         # idle negative: hands below shoulders, roughly upright, arms down
         hands_down = lwri[1] > sho_y + 0.5 * sho_w and rwri[1] > sho_y + 0.5 * sho_w
@@ -350,7 +378,8 @@ def run_coco(source: str = "coco_pose"):
     for c, ids in want.items():
         print(f"  candidate {c}: {len(ids)} images (capped)")
 
-    classes = {"t_pose", "raise_right_hand", "raise_left_hand", "_coco_idle", "heart"}
+    classes = {"t_pose", "raise_right_hand", "raise_left_hand", "_coco_idle", "heart",
+               "sit", "squat", "laying"}
     ex = Extractor()
     sink = Sink(source, classes)
     # do the scarce classes first so an interrupt keeps the valuable ones
