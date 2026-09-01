@@ -12,7 +12,9 @@ s01/s02 frames, the originals still go to test — a leaky number, flagged
 `aug_only` in the card. `thumb` has no s01 data, so 15% of its external rows are
 held out as its test.
 
-Writes data/dataset/{train,test}.npz + dataset_card.json.
+Writes data/dataset/{train,val,test}.npz + dataset_card.json. `val` is a 15%
+held-out slice of each external class's clean pre-augment rows — same domain as
+train, never augmented, for Phase 4 early stopping / calibration / thresholds.
 """
 
 from __future__ import annotations
@@ -56,6 +58,13 @@ THUMB_TEST_FRAC = 0.15
 # augmenting; grow aug-only classes toward this many rows with extra copies.
 EXT_ORIG_CAP = 1400
 AUG_ONLY_TARGET = 2200
+
+# fraction of each external class's CLEAN, PRE-AUGMENT rows held out as `val.npz`
+# — for MLP early stopping, temperature scaling and per-class threshold tuning
+# (Phase 4). Same domain as train, never augmented, never in train.npz. aug-only
+# classes (squat, glico_pose) get no val rows — their threshold falls back to a
+# default.
+VAL_FRAC = 0.15
 
 # MediaPipe-33 body indices
 _NOSE, _LSHO, _RSHO, _LWRI, _RWRI = 0, 11, 12, 15, 16
@@ -160,6 +169,7 @@ def main():
 
     tr_X, tr_y = [], []
     te_X, te_y, te_meta_src, te_subj = [], [], [], []
+    va_X, va_y, va_src = [], [], []
     per_class = {}
     rng = np.random.default_rng(SEED)
 
@@ -186,6 +196,15 @@ def main():
                 rec["eval_type"] = "held_out_external"
             else:
                 Xtr = Xe
+            # carve the validation slice off the clean pre-augment pool
+            vperm = rng.permutation(len(Xtr))
+            n_val = int(len(Xtr) * VAL_FRAC)
+            if n_val:
+                va_X.append(Xtr[vperm[:n_val]])
+                va_y.append(np.array([cls] * n_val))
+                va_src.append(np.array(["val:" + "/".join(sorted(set(ext[cls][2].tolist())))] * n_val))
+                Xtr = Xtr[vperm[n_val:]]
+                rec["val_rows"] = n_val
             if len(Xtr) > EXT_ORIG_CAP:  # keep class balance sane
                 Xtr = Xtr[rng.permutation(len(Xtr))[:EXT_ORIG_CAP]]
             # scarce external classes (t_pose) get more copies to reach ~AUG_ONLY_TARGET
@@ -245,6 +264,7 @@ def main():
         "train": _write("train", trX, trY, {}),
         "test": _write("test", teX, teY, {"source": teSRC, "subject_id": teSUBJ}),
         "per_class": per_class,
+        "val_frac": VAL_FRAC,
         "notes": [
             "cross_domain classes: real generalisation number (external train, our test).",
             "held_out_external (thumb): cross-subject within HaGRID, same webcam domain.",
@@ -254,13 +274,24 @@ def main():
             "leak). Phase 6 field test is the real gate for all aug_only classes.",
         ],
     }
+    if va_X:
+        vaX = np.concatenate(va_X); vaY = np.concatenate(va_y)
+        vaS = np.concatenate(va_src)
+        vsh = np.random.default_rng(SEED + 11).permutation(len(vaX))
+        card["val"] = _write("val", vaX[vsh], vaY[vsh],
+                             {"source": vaS[vsh],
+                              "subject_id": np.array(["external"] * len(vaX))})
+
     (OUT / "dataset_card.json").write_text(json.dumps(card, indent=2, default=str))
 
-    print(f"train {card['train']['rows']} rows, test {card['test']['rows']} rows -> {OUT}\n")
-    print(f"{'class':18s} {'eval':20s} {'train':>7s} {'test':>6s}")
+    nval = card.get("val", {}).get("rows", 0)
+    print(f"train {card['train']['rows']} rows, val {nval} rows, "
+          f"test {card['test']['rows']} rows -> {OUT}\n")
+    print(f"{'class':18s} {'eval':20s} {'train':>7s} {'val':>5s} {'test':>6s}")
     for c in CLASSES:
         r = per_class[c]
-        print(f"{c:18s} {str(r['eval_type'] or '-'):20s} {r['train_rows']:7d} {r['test_rows']:6d}")
+        print(f"{c:18s} {str(r['eval_type'] or '-'):20s} {r['train_rows']:7d} "
+              f"{r.get('val_rows', 0):5d} {r['test_rows']:6d}")
 
 
 if __name__ == "__main__":

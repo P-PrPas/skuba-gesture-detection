@@ -77,7 +77,7 @@ def _calibration(conf, correct):
     return bins, round(ece, 3)
 
 
-def _evaluate(name: str) -> dict:
+def _evaluate(name: str, split: str = "test") -> dict:
     bundle = joblib.load(MODELS / f"{name}.joblib")
     clf, clip = bundle["clf"], bundle["clip"]
     feat_mode = bundle.get("features", "raw")
@@ -85,7 +85,7 @@ def _evaluate(name: str) -> dict:
     per_class_eval = {c: card["per_class"].get(c, {}).get("eval_type", "-")
                       for c in CLASSES}
 
-    d = np.load(DS / "test.npz", allow_pickle=True)
+    d = np.load(DS / f"{split}.npz", allow_pickle=True)
     Xall = to_features(np.clip(d["X"].astype(np.float32), -clip, clip), feat_mode)
     yall = d["y"].astype(int)
     subj = d["subject_id"]
@@ -153,6 +153,7 @@ def _evaluate(name: str) -> dict:
 
     return {
         "model": name,
+        "split": split,
         "features": feat_mode,
         "n_test_rows": int(len(yall)),
         "n_scored_rows": int(len(y)),
@@ -283,13 +284,14 @@ def _compare_png(evs: list[dict], f1_path: Path, overall_path: Path):
 
 
 # --------------------------------------------------------------------------- #
-def _run_one(name: str) -> dict:
-    ev = _evaluate(name)
-    (MODELS / f"{name}.eval.json").write_text(json.dumps(ev, indent=2))
+def _run_one(name: str, split: str = "test") -> dict:
+    ev = _evaluate(name, split)
+    tag = "" if split == "test" else f".{split}"
+    (MODELS / f"{name}{tag}.eval.json").write_text(json.dumps(ev, indent=2))
     FIG.mkdir(parents=True, exist_ok=True)
-    _confusion_png(ev, FIG / f"{name}_confusion.png")
-    _perclass_png(ev, FIG / f"{name}_perclass.png")
-    _calibration_png(ev, FIG / f"{name}_calibration.png")
+    _confusion_png(ev, FIG / f"{name}{tag}_confusion.png")
+    _perclass_png(ev, FIG / f"{name}{tag}_perclass.png")
+    _calibration_png(ev, FIG / f"{name}{tag}_calibration.png")
     print(f"\n== {name} ==  macro-F1 {ev['macro_f1']}  real-eval {ev['macro_f1_real_eval']}  "
           f"acc {ev['micro_f1_accuracy']}  ECE {ev['expected_calibration_error']}  "
           f"{ev['model_size_mb']} MB  fit {ev['fit_seconds']}s")
@@ -303,23 +305,39 @@ def _run_one(name: str) -> dict:
     return ev
 
 
+# canonical order for figures/tables (best-known first)
+_ORDER = ["rf", "et", "lgbm", "catboost", "hgb", "svm", "logreg", "mlp", "gcn"]
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", choices=["lgbm", "rf"])
-    ap.add_argument("--all", action="store_true", help="every trained model + comparison")
+    ap.add_argument("--model", help="one model name")
+    ap.add_argument("--all", action="store_true",
+                    help="every trained classifier/models/*.joblib + comparison")
+    ap.add_argument("--split", default="test", choices=["test", "val"],
+                    help="which split to score (default test)")
     args = ap.parse_args()
 
-    names = ["rf", "lgbm"] if args.all else [args.model or "lgbm"]
+    if args.all:
+        found = {p.stem for p in MODELS.glob("*.joblib")}
+        names = [n for n in _ORDER if n in found] + sorted(found - set(_ORDER))
+    else:
+        names = [args.model or "lgbm"]
     names = [n for n in names if (MODELS / f"{n}.joblib").exists()]
     if not names:
         raise SystemExit("no trained model — run classifier.train first")
 
-    evs = [_run_one(n) for n in names]
+    evs = [_run_one(n, args.split) for n in names]
 
     if len(evs) > 1:
-        FIG.mkdir(parents=True, exist_ok=True)
-        _compare_png(evs, FIG / "compare_f1.png", FIG / "compare_overall.png")
-        cmp = {"generated_from": [e["model"] for e in evs],
+        # >2 models is a Phase 4 comparison -> results/phase4/; the RF-vs-LGBM
+        # Phase 3 comparison stays in results/phase3/.
+        cdir = ROOT / "results" / ("phase3" if set(names) <= {"rf", "lgbm"} else "phase4")
+        cfig = cdir / "fig"
+        cfig.mkdir(parents=True, exist_ok=True)
+        tag = "" if args.split == "test" else f".{args.split}"
+        _compare_png(evs, cfig / f"compare_f1{tag}.png", cfig / f"compare_overall{tag}.png")
+        cmp = {"generated_from": [e["model"] for e in evs], "split": args.split,
                "headline": {e["model"]: {k: e[k] for k in
                             ("macro_f1", "macro_f1_real_eval", "macro_f1_cross_domain",
                              "micro_f1_accuracy", "balanced_accuracy",
@@ -330,9 +348,9 @@ def main():
                                     for e in evs}
                                 for c in evs[0]["per_class"]},
                "cross_person": {e["model"]: e["cross_person"] for e in evs}}
-        out = ROOT / "results" / "phase3" / "model_comparison.json"
+        out = cdir / f"model_comparison{tag}.json"
         out.write_text(json.dumps(cmp, indent=2))
-        print(f"\n-> {out} + compare_f1.png + compare_overall.png")
+        print(f"\n-> {out} + compare figures in {cfig}")
 
 
 if __name__ == "__main__":
