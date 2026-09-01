@@ -86,21 +86,20 @@ the classification layer + the existing feature data.
   the 0.86 bar (0.851 ± 0.035) and collapses `idle` on 2/5 seeds. Table in
   `docs/phase4_baseline.md`.
 
-### Track C — model family — mostly DONE, MLP recommended (`docs/phase4_baseline.md`)
+### Track C — model family — DONE, MLP locked (`docs/phase4_baseline.md`)
 - `val` split added to `build_dataset.py` (15% of each external class's clean
   pre-augment rows). `train.py --model {rf,lgbm,catboost,hgb,et,svm,logreg,mlp,
   all}` all emit the same bundle; `classifier/evaluate.py` scores them.
-- Ran: **LightGBM 0.888** / **MLP 0.872** / RF 0.823 (laying 0.41, 389 MB) /
-  LogReg 0.667 (linear floor). ExtraTrees out (998 MB). CatBoost / HGB / SVM
-  not completed (free Colab's 2-CPU tier too slow; same GBDT family as LightGBM).
-- **Recommendation: MLP** — 1.6 F1 points behind LightGBM (test noise) but its
-  confidence separates right from wrong (0.85 vs 0.48, spread histogram) for the
-  Phase 5 idle threshold, and 0.3 MB vs 31 MB. LightGBM piles ~80 % of
-  predictions at conf ~1.0 → needs Platt/isotonic first. Pending: MLP multi-seed
-  stability + Track D recovery of mini_heart / raise_*_hand. Fallback:
-  LightGBM + isotonic.
-- Still to run for the chosen model: feature-set comparison (`--features
-  raw|derived|both|body_raw_hands_derived`).
+- **All 8 candidates trained + scored locally** (real-eval): LightGBM 0.866 /
+  MLP 0.847 / HGB 0.811 / RF 0.788 / CatBoost 0.786 / SVM 0.775 / ET 0.757 /
+  LogReg 0.610. The GBDT family does NOT cluster — CatBoost/HGB are 5–8 points
+  behind LightGBM at screening configs (earlier "±0.01" assumption was wrong).
+  k-NN not run (undeployable).
+- **Locked: MLP** — tied with LightGBM inside 5-seed noise but wins on
+  deployment: 0.3 MB vs 31 MB, confidence separates right/wrong (0.85 vs 0.48)
+  for the Phase 5 idle threshold with no calibration step. LightGBM piles ~80 %
+  of predictions at conf ~1.0 → would need Platt/isotonic first.
+- Feature-set comparison for the chosen model → Track B below.
 
 ### Track D — augmentation strength — DONE
 - 4 `AugParams` variants rebuilt + retrained (`AUG_OVERRIDE` /

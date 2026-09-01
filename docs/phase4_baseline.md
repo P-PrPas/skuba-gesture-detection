@@ -7,22 +7,35 @@ Track C compared candidate classifiers on the finalised 12-class dataset
 (train 52,738 / val 2,357 / test 1,254), all scored by `classifier/evaluate.py`.
 Report: `results/phase4/classifier_report.docx`, figures in `results/phase4/fig/`.
 
-## What was actually run
+## What was actually run — all 8 candidates (`train.py`)
 
-| model | macro-F1 | real-eval | acc | ECE | conf correct / wrong | size | fit |
+Every candidate trained locally on the finalised dataset, scored on `test` by
+`classifier/evaluate.py`. (An earlier session offloaded the heavier ones to
+free Colab, whose 2-CPU tier stalled them past 20 min; retrained here in
+~1–5 min each — CatBoost/HGB/SVM/ET numbers below are from that run.)
+
+| model | macro-F1 | real-eval | acc | ECE | conf ok / wrong | size | fit |
 |---|---|---|---|---|---|---|---|
-| **LightGBM** | **0.888** | **0.866** | **0.923** | **0.036** | 0.95 / 0.80 | 31 MB | 104 s |
-| **MLP** (+temp-scaling) | 0.872 | 0.847 | 0.915 | 0.103 | 0.85 / **0.48** | **0.3 MB** | 68 s |
+| **LightGBM** | **0.888** | **0.866** | **0.923** | 0.036 | 0.95 / 0.80 | 31 MB | 104 s |
+| **MLP** (+temp-scale) *(LOCK)* | 0.872 | 0.847 | 0.915 | 0.103 | 0.86 / **0.48** | **0.3 MB** | 102 s |
+| HistGradientBoosting | 0.843 | 0.811 | 0.899 | **0.022** | 0.90 / 0.63 | 23 MB | 160 s |
 | RandomForest | 0.823 | 0.788 | 0.868 | 0.146 | 0.77 / 0.44 | 389 MB | 43 s |
+| CatBoost (depth-6/400 screen) | 0.821 | 0.786 | 0.881 | 0.091 | 0.93 / 0.53 | **2.7 MB** | 307 s |
+| RBF-SVM (12k subsample) | 0.811 | 0.775 | 0.848 | 0.056 | 0.86 / 0.55 | 11 MB | 80 s |
+| ExtraTrees | 0.797 | 0.757 | 0.867 | 0.172 | 0.79 / 0.53 | 998 MB | 29 s |
 | LogisticRegression | 0.667 | 0.610 | 0.785 | 0.083 | 0.88 / 0.52 | ~0 | 31 s |
 
-`k-NN`, `ExtraTrees` — ExtraTrees ran (macro-F1 0.797, **998 MB**) and is out on
-size; k-NN not run (undeployable by design).
-`CatBoost`, `HistGradientBoosting`, `RBF-SVM` — **not completed**: Colab's free
-2-CPU tier is too slow (RandomForest alone took 7 min there; CatBoost and HGB
-each stalled past 20 min). CatBoost and HGB are the same GBDT family as
-LightGBM and would land within ~±0.01 of it — they do not change the decision.
-Revisit on a real machine if the pick is ever re-opened.
+k-NN not run (undeployable by design — stores the whole training set).
+
+**The GBDT family does not cluster.** The earlier assumption that CatBoost / HGB
+would land within ±0.01 of LightGBM was wrong: CatBoost is 8 real-eval points
+behind LightGBM and HGB 5.5 behind, at the screening configs. LightGBM's
+gradient-based leaf split + our tuned `num_leaves`/`learning_rate` genuinely
+lead this family on this data. HGB has the best calibration of any candidate
+(ECE 0.022) but its accuracy and confidence spread don't beat MLP. CatBoost is
+tiny (2.7 MB) but not accurate enough to matter. **None of the four newly-run
+models changes the LightGBM-vs-MLP decision** — but now that is measured, not
+assumed.
 
 ## The decision: LightGBM vs MLP
 

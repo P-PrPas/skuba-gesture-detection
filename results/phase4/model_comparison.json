@@ -1,7 +1,11 @@
 {
   "generated_from": [
     "rf",
+    "et",
     "lgbm",
+    "catboost",
+    "hgb",
+    "svm",
     "logreg",
     "mlp"
   ],
@@ -19,6 +23,18 @@
       "model_size_mb": 388.7,
       "fit_seconds": 43.1
     },
+    "et": {
+      "macro_f1": 0.797,
+      "macro_f1_real_eval": 0.757,
+      "macro_f1_cross_domain": 0.733,
+      "micro_f1_accuracy": 0.867,
+      "balanced_accuracy": 0.767,
+      "expected_calibration_error": 0.172,
+      "mean_conf_correct": 0.73,
+      "mean_conf_wrong": 0.471,
+      "model_size_mb": 998.1,
+      "fit_seconds": 28.9
+    },
     "lgbm": {
       "macro_f1": 0.888,
       "macro_f1_real_eval": 0.866,
@@ -30,6 +46,42 @@
       "mean_conf_wrong": 0.796,
       "model_size_mb": 31.1,
       "fit_seconds": 104.2
+    },
+    "catboost": {
+      "macro_f1": 0.821,
+      "macro_f1_real_eval": 0.786,
+      "macro_f1_cross_domain": 0.766,
+      "micro_f1_accuracy": 0.881,
+      "balanced_accuracy": 0.794,
+      "expected_calibration_error": 0.091,
+      "mean_conf_correct": 0.846,
+      "mean_conf_wrong": 0.444,
+      "model_size_mb": 2.7,
+      "fit_seconds": 307.1
+    },
+    "hgb": {
+      "macro_f1": 0.843,
+      "macro_f1_real_eval": 0.811,
+      "macro_f1_cross_domain": 0.792,
+      "micro_f1_accuracy": 0.899,
+      "balanced_accuracy": 0.835,
+      "expected_calibration_error": 0.022,
+      "mean_conf_correct": 0.943,
+      "mean_conf_wrong": 0.671,
+      "model_size_mb": 23.1,
+      "fit_seconds": 159.8
+    },
+    "svm": {
+      "macro_f1": 0.811,
+      "macro_f1_real_eval": 0.775,
+      "macro_f1_cross_domain": 0.752,
+      "micro_f1_accuracy": 0.848,
+      "balanced_accuracy": 0.81,
+      "expected_calibration_error": 0.056,
+      "mean_conf_correct": 0.843,
+      "mean_conf_wrong": 0.537,
+      "model_size_mb": 10.8,
+      "fit_seconds": 80.3
     },
     "logreg": {
       "macro_f1": 0.667,
@@ -59,73 +111,121 @@
   "per_class_f1": {
     "idle": {
       "rf": 0.624,
+      "et": 0.191,
       "lgbm": 0.656,
+      "catboost": 0.667,
+      "hgb": 0.599,
+      "svm": 0.433,
       "logreg": 0.0,
       "mlp": 0.761
     },
     "raise_right_hand": {
       "rf": 0.793,
+      "et": 0.736,
       "lgbm": 0.812,
+      "catboost": 0.744,
+      "hgb": 0.761,
+      "svm": 0.763,
       "logreg": 0.739,
       "mlp": 0.757
     },
     "raise_left_hand": {
       "rf": 0.792,
+      "et": 0.792,
       "lgbm": 0.833,
+      "catboost": 0.656,
+      "hgb": 0.825,
+      "svm": 0.762,
       "logreg": 0.721,
       "mlp": 0.769
     },
     "sit": {
       "rf": 0.887,
+      "et": 0.887,
       "lgbm": 0.963,
+      "catboost": 0.911,
+      "hgb": 0.948,
+      "svm": 0.863,
       "logreg": 0.798,
       "mlp": 0.958
     },
     "squat": {
       "rf": 1.0,
+      "et": 1.0,
       "lgbm": 1.0,
+      "catboost": 1.0,
+      "hgb": 1.0,
+      "svm": 0.982,
       "logreg": 0.915,
       "mlp": 1.0
     },
     "laying": {
       "rf": 0.412,
+      "et": 0.851,
       "lgbm": 0.938,
+      "catboost": 0.806,
+      "hgb": 0.938,
+      "svm": 0.876,
       "logreg": 0.326,
       "mlp": 0.892
     },
     "ok": {
       "rf": 0.784,
+      "et": 0.784,
       "lgbm": 0.784,
+      "catboost": 0.773,
+      "hgb": 0.784,
+      "svm": 0.8,
       "logreg": 0.784,
       "mlp": 0.784
     },
     "two_finger": {
       "rf": 0.956,
+      "et": 0.941,
       "lgbm": 0.983,
+      "catboost": 0.951,
+      "hgb": 0.978,
+      "svm": 0.93,
       "logreg": 0.967,
       "mlp": 0.972
     },
     "thumb": {
       "rf": 0.979,
+      "et": 0.974,
       "lgbm": 0.983,
+      "catboost": 0.967,
+      "hgb": 0.986,
+      "svm": 0.983,
       "logreg": 0.891,
       "mlp": 0.965
     },
     "mini_heart": {
       "rf": 0.831,
+      "et": 0.594,
       "lgbm": 0.889,
+      "catboost": 0.525,
+      "hgb": 0.475,
+      "svm": 0.448,
       "logreg": 0.0,
       "mlp": 0.732
     },
     "t_pose": {
       "rf": 0.82,
+      "et": 0.82,
       "lgbm": 0.82,
+      "catboost": 0.857,
+      "hgb": 0.82,
+      "svm": 0.896,
       "logreg": 0.87,
       "mlp": 0.879
     },
     "glico_pose": {
       "rf": 1.0,
+      "et": 1.0,
       "lgbm": 1.0,
+      "catboost": 1.0,
+      "hgb": 1.0,
+      "svm": 1.0,
       "logreg": 0.992,
       "mlp": 1.0
     }
@@ -137,10 +237,34 @@
         "s02": 0.9
       }
     },
+    "et": {
+      "sit": {
+        "s01": 0.994,
+        "s02": 0.95
+      }
+    },
     "lgbm": {
       "sit": {
         "s01": 0.971,
         "s02": 1.0
+      }
+    },
+    "catboost": {
+      "sit": {
+        "s01": 0.997,
+        "s02": 1.0
+      }
+    },
+    "hgb": {
+      "sit": {
+        "s01": 0.94,
+        "s02": 1.0
+      }
+    },
+    "svm": {
+      "sit": {
+        "s01": 0.825,
+        "s02": 0.817
       }
     },
     "logreg": {

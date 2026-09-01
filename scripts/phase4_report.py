@@ -253,10 +253,12 @@ def main():
         "area = confidence separation (mean conf when correct minus when wrong — "
         "the bigger the bubble the more usable the Phase 5 idle threshold). "
         "Points on the green dashed line are Pareto-optimal (nothing beats them "
-        "on both axes); the gold star is the locked pick. LightGBM edges MLP on "
-        "F1 but at 100x the size and a third of the confidence spread; "
-        "RandomForest is off the frontier entirely — LightGBM beats it on F1 at "
-        "12x smaller.")
+        "on both axes); the gold star is the locked pick. Only LightGBM and MLP "
+        "sit on the frontier: LightGBM edges MLP on F1 but at 100x the size and "
+        "a third of the confidence spread. Every other candidate — including "
+        "CatBoost and HistGradientBoosting, run to close the GBDT-family gap — "
+        "is dominated: 3–11 real-eval points behind LightGBM at equal or larger "
+        "size. The GBDT family does not cluster (section 8).")
     _fig(doc, scat, width=6.0)
 
     doc.add_heading("2. Per-class F1", 1)
@@ -312,6 +314,15 @@ def main():
         "deployment axes — 0.3 MB vs 31 MB, and a confidence gap (0.85 correct / "
         "0.49 wrong) wide enough to drive the Phase 5 idle threshold without a "
         "separate calibration step.")
+    doc.add_paragraph(
+        "All 8 candidates were trained and scored (section 1), including "
+        "CatBoost, HistGradientBoosting, RBF-SVM and ExtraTrees — the four an "
+        "earlier session had left unrun. They do not change the pick: the GBDT "
+        "family does not cluster around LightGBM as had been assumed (CatBoost "
+        "−8, HGB −5.5 real-eval points at the screening configs), and none of "
+        "the four beats LightGBM or MLP on any axis that matters. HGB is the "
+        "best-calibrated model of the lot (ECE 0.022) but trails MLP on both "
+        "accuracy and confidence spread.")
     doc.add_paragraph(
         "Tracks B/D/E each tested one lever and each confirmed the current "
         "config: 'both' features beat the leaner alternative on stability, the "
