@@ -1,0 +1,107 @@
+{
+  "pose_backbone": "mediapipe",
+  "clips": [
+    {
+      "clip_id": "idle_01",
+      "label": "idle",
+      "frames": 60,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "raise_right_hand_01",
+      "label": "raise_right_hand",
+      "frames": 96,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "raise_left_hand_01",
+      "label": "raise_left_hand",
+      "frames": 45,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "ok_01",
+      "label": "ok",
+      "frames": 45,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "two_finger_01",
+      "label": "two_finger",
+      "frames": 87,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "i_love_you_01",
+      "label": "i_love_you",
+      "frames": 141,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "rock_01",
+      "label": "rock",
+      "frames": 102,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "heart_01",
+      "label": "heart",
+      "frames": 30,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "mini_heart_01",
+      "label": "mini_heart",
+      "frames": 45,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "t_pose_01",
+      "label": "t_pose",
+      "frames": 36,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "heart_02",
+      "label": "heart",
+      "frames": 54,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "glico_pose_01",
+      "label": "glico_pose",
+      "frames": 66,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "squat_01",
+      "label": "squat",
+      "frames": 108,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "sit_01",
+      "label": "sit",
+      "frames": 138,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "sit_02",
+      "label": "sit",
+      "frames": 177,
+      "no_body_frames": 0
+    },
+    {
+      "clip_id": "laying_03",
+      "label": "laying",
+      "frames": 77,
+      "no_body_frames": 1
+    },
+    {
+      "clip_id": "sit_03",
+      "label": "sit",
+      "frames": 60,
+      "no_body_frames": 0
+    }
+  ]
+}
