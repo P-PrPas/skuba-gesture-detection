@@ -28,17 +28,28 @@
 
 ## Next — Track B / D / E (a fresh session does these cleanly)
 
-1. **Track B — feature set.** MLP `--features` sweep was running when this
-   session ended; partial result in a scratch log — `raw` (152-d) tied `both`
-   (189-d) at real-eval 0.846. Re-run:
-   ```
-   for f in raw derived both body_raw_hands_derived; do
-     python -m classifier.train --model mlp --features $f
-     python -m classifier.evaluate --model mlp
-   done
-   ```
-   If `raw` holds, switch the MLP to `raw` (smaller input, the net learns the
-   derived interactions itself) and retrain + re-lock.
+1. **Track B — feature set. DONE (1 seed) — `body_raw_hands_derived` wins:**
+
+   | features | dim | macro-F1 | real-eval | acc |
+   |---|---|---|---|---|
+   | raw | 152 | 0.872 | 0.846 | 0.914 |
+   | derived | 39 | 0.724 | 0.673 | 0.833 |
+   | both *(current lock)* | 189 | 0.872 | 0.847 | 0.915 |
+   | **body_raw_hands_derived** | **105** | **0.896** | **0.876** | 0.919 |
+
+   `body_raw_hands_derived` = raw body coords + presence flags + ALL derived
+   (drops the raw hand coords, keeps only the scale-invariant derived hand
+   features). It beats `both` by ~3 real-eval points AND is smaller — the raw
+   hand coords carry the MediaPipe hand-domain-gap noise; the derived hand
+   features are the clean signal.
+
+   **Action:** re-run the 5-seed stability check with
+   `--features body_raw_hands_derived` (mirror `docs/phase4_baseline.md`'s
+   table). If the mean holds ≥ ~0.86 real-eval, switch the MLP lock to that
+   feature mode: retrain `mlp.joblib`, update `train.py` (make
+   `body_raw_hands_derived` the MLP default), regenerate the report, update
+   `docs/phase4_baseline.md`. Then also re-check LightGBM at this feature mode
+   for the record.
 
 2. **Track D — augmentation strength.** `AugParams` in `features/augment.py`.
    MLP's weak classes are `mini_heart` (0.73) and `raise_*_hand` (0.76). Tune
