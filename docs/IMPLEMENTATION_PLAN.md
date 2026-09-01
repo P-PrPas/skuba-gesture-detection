@@ -84,25 +84,21 @@ the classification layer + the existing feature data.
 - Compare `raw` vs `derived` vs `both` vs `body_raw_hands_derived` (the
   `--features` flag exists) for the leading model.
 
-### Track C — model family (the core; see `docs/phase4_classifiers.md`)
-- Add a **stratified `val` split** to `build_dataset.py` from the pre-augmentation
-  external rows (needed for early stopping, temperature scaling, threshold
-  tuning — must not touch `test.npz`).
-- `train.py --model {rf, lgbm, catboost, hgb, et, svm, mlp, logreg}` — each
-  emitting the same `{clf, classes, clip, features}` bundle; the eval harness
-  scores them identically.
-- Shortlist to actually run: **CatBoost** (ordered boosting → better calibrated
-  than LGBM, compact), **HistGradientBoosting** (no new dep, free data point),
-  **small regularised MLP + temperature scaling** (the plan's MLP done right,
-  <1 MB), **RBF-SVM on a ~15-20k subsample** (different inductive bias, tiny
-  model). Stretch: a **spatial GCN** (skeleton = graph; highest upside, real
-  overfitting risk on the ~1,250-row test).
-- Run **k-NN once** as a separability sanity check (not a candidate).
-- **Calibration is a separable layer** — pick the model on raw accuracy + size +
-  separability, then apply Platt / isotonic / temperature scaling and re-score
-  ECE + conf-correct-vs-wrong.
-- Shrink the RandomForest (max_depth / min_samples_leaf) — 419 MB is a
-  deployment liability regardless of whether RF stays the pick.
+### Track C — model family — mostly DONE, MLP recommended (`docs/phase4_baseline.md`)
+- `val` split added to `build_dataset.py` (15% of each external class's clean
+  pre-augment rows). `train.py --model {rf,lgbm,catboost,hgb,et,svm,logreg,mlp,
+  all}` all emit the same bundle; `classifier/evaluate.py` scores them.
+- Ran: **LightGBM 0.888** / **MLP 0.872** / RF 0.823 (laying 0.41, 389 MB) /
+  LogReg 0.667 (linear floor). ExtraTrees out (998 MB). CatBoost / HGB / SVM
+  not completed (free Colab's 2-CPU tier too slow; same GBDT family as LightGBM).
+- **Recommendation: MLP** — 1.6 F1 points behind LightGBM (test noise) but its
+  confidence separates right from wrong (0.85 vs 0.48, spread histogram) for the
+  Phase 5 idle threshold, and 0.3 MB vs 31 MB. LightGBM piles ~80 % of
+  predictions at conf ~1.0 → needs Platt/isotonic first. Pending: MLP multi-seed
+  stability + Track D recovery of mini_heart / raise_*_hand. Fallback:
+  LightGBM + isotonic.
+- Still to run for the chosen model: feature-set comparison (`--features
+  raw|derived|both|body_raw_hands_derived`).
 
 ### Track D — augmentation strength
 - Tune `AugParams` against the val split — too little underfits generalization,

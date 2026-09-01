@@ -51,17 +51,32 @@ temperature scaling, `classifier/mlp.py`) — 1.6 macro-F1 points behind LightGB
   (0.76 vs 0.81).
 - `sit`@s02 = 1.0 (same as LightGBM).
 
-### Recommendation: **MLP**, pending two checks
+### Stability — 5 seeds
 
-The Phase 5 confidence-threshold requirement is the deciding factor, and the
-size + no-calibration-needed are bonuses. Before locking:
-1. **Stability** — retrain the MLP with 3–5 seeds; the 1,254-row test means a
-   1–2 point swing is possible. Lock only if the mean holds ≥ ~0.86 real-eval.
-2. **`mini_heart` / `raise_*_hand`** — if Track D (augmentation tuning) or a
-   wider MLP recovers these to ~LightGBM levels without hurting the confidence
-   spread, MLP is unambiguous.
+| | seed 0 | 1 | 2 | 3 | 4 | **mean ± sd** |
+|---|---|---|---|---|---|---|
+| macro-F1 | 0.872 | 0.893 | 0.864 | 0.901 | 0.874 | **0.881 ± 0.014** |
+| real-eval | 0.847 | 0.871 | 0.838 | 0.881 | 0.849 | **0.857 ± 0.016** |
+| acc | 0.915 | 0.923 | 0.911 | 0.932 | 0.913 | 0.919 ± 0.008 |
+| conf correct / wrong | .85/.48 | .86/.49 | .86/.46 | .84/.54 | .86/.50 | consistent |
 
-If the MLP proves unstable, fall back to **LightGBM + isotonic calibration**.
+MLP's mean real-eval (0.857 ± 0.016) is within one standard deviation of
+LightGBM's deterministic 0.866 — **statistically indistinguishable on
+accuracy**. The confidence separation (~0.85 correct / ~0.49 wrong) is stable
+across every seed. The committed `mlp.joblib` is seed 0 (0.847 real — a
+mid-range seed, no cherry-picking).
+
+### Recommendation: **lock MLP**
+
+- Accuracy tied with LightGBM (within noise).
+- **Confidence is thresholdable out of the box** — the Phase 5 requirement.
+- 0.3 MB vs 31 MB.
+- No separate calibration step.
+
+Remaining Track D/E work applies to MLP: tune `AugParams` to lift `mini_heart`
+(0.73) and `raise_*_hand` (0.76), then set per-class thresholds on the val
+split. If Track D can't move those without hurting the confidence spread,
+re-evaluate against LightGBM + isotonic calibration.
 
 ## Carried into the rest of Phase 4 / Phase 5
 
