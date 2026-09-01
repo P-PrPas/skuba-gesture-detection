@@ -70,13 +70,17 @@ SOURCES = {
     "coco_pose": {"kind": "coco", "max_per_class": 1500},
     "roboflow_ily": {
         "kind": "roboflow",
-        # (workspace, project, version|None=latest, export_format, {rf_class: our_class})
-        # class names are matched loosely (case / spaces / _ ignored).
+        # (workspace, project, version|None=probe, export_format, {rf_class: our_class})
+        # class names are matched loosely (case / spaces / _ ignored). All five
+        # verified 2026-09-01: v1 / coco / an "I Love You" category.
         "projects": [
-            ("ananthu-s", "asl-gvpbe", None, "folder", {"iloveyou": "i_love_you"}),
-            ("asl-auyfj", "asl-detection-lvx6a", None, "coco", {"iloveyou": "i_love_you"}),
+            ("ece496-public-asl", "ece496-public-asl", 1, "coco", {"iloveyou": "i_love_you"}),
+            ("vraj-atah9", "signlanguage-f0irs", 1, "coco", {"iloveyou": "i_love_you"}),
+            ("actions", "actions-zqpb1", 1, "coco", {"iloveyou": "i_love_you"}),
+            ("asl-auyfj", "asl-detection-lvx6a", 1, "coco", {"iloveyou": "i_love_you"}),
+            ("signlanguageassistant", "signlanguageai", 1, "coco", {"iloveyou": "i_love_you"}),
         ],
-        "max_per_class": 1500,
+        "max_per_class": 2500,
     },
 }
 
@@ -477,27 +481,25 @@ def run_roboflow(source: str):
             print(f"  {tag}: nothing downloaded (versions 1-12, formats {fmts}) - skipping",
                   flush=True)
             continue
-        kept = 0
-        for imgf, bbox, cls in _iter_roboflow_export(loc, lmap):
+        kept = seen = 0
+        # the bbox only tells us the image *contains* an ILY hand — feed the WHOLE
+        # frame to the extractor so MediaPipe can find the body and do its own
+        # wrist-anchored hand crop (cropping to the bbox here kills the body).
+        for imgf, _bbox, cls in _iter_roboflow_export(loc, lmap):
             if sink.counts[cls] >= cap:
                 continue
+            seen += 1
             arr = cv2.imread(str(imgf))
             if arr is None:
                 continue
-            if bbox is not None:                       # crop to the ILY hand, padded
-                x, y, w, h = (int(round(t)) for t in bbox)
-                pad = int(0.3 * max(w, h))
-                sub = arr[max(0, y - pad): y + h + pad, max(0, x - pad): x + w + pad]
-                if sub.size:
-                    arr = sub
             vec = ex(arr)
             if vec is not None:
                 sink.add(cls, vec)
                 kept += 1
         shutil.rmtree(loc, ignore_errors=True)
         sink.flush(tag)
-        print(f"  {tag}: +{kept}  {dict(sorted(sink.counts.items()))}  "
-              f"({time.time() - t0:.0f}s)", flush=True)
+        print(f"  {tag}: {seen} ILY images -> +{kept} kept  "
+              f"{dict(sorted(sink.counts.items()))}  ({time.time() - t0:.0f}s)", flush=True)
     sink.flush()
     print(f"\n{source}: {sum(sink.counts.values())} rows -> {OUT_DIR}")
     for c in sorted(sink.counts):
