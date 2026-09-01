@@ -41,9 +41,12 @@ TMP = ROOT / "data" / "_ext_tmp"
 _HAGRID_V1 = {
     "train_val_ok": "ok", "train_val_peace": "two_finger",
     "train_val_peace_inverted": "two_finger", "train_val_two_up": "two_finger",
-    "train_val_rock": "rock", "train_val_like": "thumb",
-    "train_val_call": "_ily_negative",  # shaka - hard negative for i_love_you
+    "train_val_like": "thumb",
+    "train_val_call": "_ily_negative",  # shaka -> idle (distinctive non-target gesture)
 }
+# `rock` was cut from CLASSES 2026-09-01; its HaGRID mapping is gone but the
+# already-extracted data/features_ext/hagrid__rock.npz is harmless (build_dataset
+# skips any class not in CLASSES).
 
 # HF datasets exposing image + integer/string label as sharded parquet.
 SOURCES = {

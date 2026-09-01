@@ -6,16 +6,18 @@ This file gives any AI coding agent (Claude Code or similar) the context needed 
 
 Gesture and posture recognition system for a service robot. The robot's camera observes a person and must classify which predefined gesture/posture they are performing, from a growing vocabulary of classes, robustly across imperfect execution, camera angle, lighting, and partial occlusion.
 
-## Target classes (initial set — expected to grow over time)
+## Target classes (expected to grow over time)
 
 Body posture: `raise_right_hand`, `raise_left_hand`, `sit`, `squat`, `laying`
-Hand gesture: `ok`, `i_love_you`, `rock`, `two_finger` (peace), `thumb`
-Pose: `t_pose`, `glico_pose` (Glico / running-man: arms up + one knee up), `heart` (big two-arm heart overhead), `mini_heart` (hands-together small heart)
+Hand gesture: `ok`, `two_finger` (peace), `thumb`
+Pose: `t_pose`, `glico_pose` (Glico / running-man: arms up + one knee up), `mini_heart` (hands-together small heart)
 Special: `idle` (no recognized gesture — must always be present in the label set)
 
-New classes will be added over the project's lifetime. The architecture must support this without retraining the backbone (see below). The authoritative list lives in `features/schema.py` (`CLASSES`) — update it there and keep this section in sync.
+**12 classes.** New classes will be added over the project's lifetime. The architecture must support this without retraining the backbone (see below). The authoritative list lives in `features/schema.py` (`CLASSES`) — update it there and keep this section in sync.
 
-`thumb` has no recorded data yet (not in the first session).
+**Cut 2026-09-01** (Phase 3): `i_love_you` and `rock` — MediaPipe Hands cannot resolve them apart from `two_finger` on our conversational-distance footage (all three read as "loose fist"; reproduced backbone failure, see `docs/phase3_baseline.md`). `heart` (overhead two-arm) — no public dataset, only 55 noisy COCO candidates. Revisit if a better hand model is adopted (Phase 4) or with Phase 6 field recordings. The 606 ILY feature rows are kept at `data/features_ext/roboflow_ily__*.npz`.
+
+`thumb` has no s01/s02 recording — trained + tested on held-out HaGRID subjects only.
 
 ## Core architecture decision — do not deviate without strong reason
 

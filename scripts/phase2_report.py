@@ -41,8 +41,8 @@ SOURCES = [
 ]
 
 SAMPLE_ORDER = [
-    ("ok", "HaGRID"), ("rock", "HaGRID"), ("thumb", "HaGRID"),
-    ("two_finger", "HaGRID"), ("ily_negative_call", "HaGRID (-> idle negative)"),
+    ("ok", "HaGRID"), ("thumb", "HaGRID"),
+    ("two_finger", "HaGRID"), ("ily_negative_call", "HaGRID (shaka -> idle)"),
     ("idle_hagrid", "HaGRID no_gesture -> idle"),
     ("t_pose", "COCO"), ("raise_right_hand", "COCO"), ("raise_left_hand", "COCO"),
     ("idle_coco", "COCO -> idle"),
@@ -79,6 +79,11 @@ def main():
         "and keep every original s01/s02 frame as a held-out TEST set. This report "
         "is what to tell the team: which datasets, what the images look like, and "
         "how the training set was built."
+    )
+    doc.add_paragraph(
+        "Vocabulary: 12 classes. i_love_you and rock were cut in Phase 3 (MediaPipe "
+        "Hands can't tell them apart from two_finger on our footage — §7); heart "
+        "was cut (no dataset — §8). See CLAUDE.md."
     )
 
     doc.add_heading("1. What was downloaded", 1)
@@ -187,11 +192,11 @@ def main():
     ]:
         doc.add_paragraph(t, style="List Bullet")
 
-    doc.add_heading("7. i_love_you — every data path tried, and why none worked", 1)
+    doc.add_heading("7. i_love_you / rock — every data path tried, then CUT", 1)
     doc.add_paragraph(
         "i_love_you is the ASL 'I Love You' handshape (thumb + index + pinky "
-        "extended). It is the one target class we could not get a working "
-        "training path for. In order:"
+        "extended); rock is the horns/mano-cornuta (index + pinky). Both were cut "
+        "from the vocabulary in Phase 3. The data history for i_love_you, in order:"
     )
     _table(doc, ["attempt", "data", "result"], [
         ["aug(s01) only", "the s01 i_love_you_01 clip, augmented",
@@ -215,14 +220,15 @@ def main():
         "every finger curled for i_love_you / rock / two_finger alike on s01's "
         "conversational-distance footage — idxCurl ~2.7 rad for all three "
         "(a straight finger is ~0.4). The three classes are the SAME feature "
-        "vector; no training data or preprocessing separates identical inputs. "
-        "This is a hand-backbone resolution limit. Options left: swap the "
-        "hand-landmark model, re-record ILY/rock/two_finger closer and sharper, "
-        "or collect them in Phase 6. The 606 feature rows are kept for whichever "
-        "lands. See docs/phase3_baseline.md and docs/external_datasets.md R2.9."
+        "vector; no training data or preprocessing separates identical inputs "
+        "(a two-stage tight crop was tested — no change). Decision: cut "
+        "i_love_you and rock, keep two_finger (it still works at ~0.72 because "
+        "HaGRID anchors 'loose fist + upright body' to that label). Revisit both "
+        "if a better hand model is adopted (Phase 4) — the 606 ILY feature rows "
+        "are kept for that. See docs/phase3_baseline.md, docs/external_datasets.md R2.9."
     )
 
-    doc.add_heading("8. heart — no dataset exists", 1)
+    doc.add_heading("8. heart — no dataset exists, CUT", 1)
     doc.add_paragraph(
         "The overhead two-arm heart is in no public dataset. It is a pose-only "
         "class (arms make the shape), so it was treated like t_pose and a "
@@ -231,19 +237,31 @@ def main():
         "COCO-train it finds only 55 candidates, most of them false positives "
         "(reaching / diving / celebration poses). MediaPipe would keep ~half — "
         "too few, and the i_love_you runs showed a class this small poisons its "
-        "neighbours. Not extracted; heart -> Phase 6 field data."
+        "neighbours. Cut; revisit with Phase 6 field recordings."
     )
 
-    doc.add_heading("9. Known gaps", 1)
+    doc.add_heading("9. Body postures — de-leaked from COCO", 1)
+    doc.add_paragraph(
+        "sit / squat / laying were originally AUG_ONLY (train = augmented s01/s02, "
+        "test = the same frames) only because Phase 2 spent its effort on the "
+        "hand classes. Body posture is where MediaPipe Pose is reliable and COCO "
+        "has plenty, so _classify_coco gained sit / squat / laying branches "
+        "(spine horizontal -> laying; knee-bend + hip-vs-knee height -> "
+        "sit / squat), re-verified against MediaPipe's normalized body and "
+        "spot-checked. sit and laying mine well; squat yield is lower (COCO is "
+        "photos, not a gym) and keeps aug(s01) as a fallback. glico_pose has no "
+        "dataset — stays aug-only."
+    )
+
+    doc.add_heading("10. Known gaps", 1)
     for t in [
-        "sit / laying / squat / glico_pose — no external data (NTU needs "
-        "registration, Le2i's link is dead). Train = aug(s01/s02).",
-        "i_love_you / heart — see §7-8. Not modelled.",
+        "glico_pose — no external data; train = aug(s01).",
+        "i_love_you / rock / heart — cut (§7-8).",
         "Hand-landmark resolution: MediaPipe Hands can't resolve fine finger "
-        "differences on s01's distant footage — caps rock / ok / two_finger at "
-        "~0.72-0.78 and makes i_love_you unmodellable.",
+        "differences on s01's distant footage — caps ok / two_finger at "
+        "~0.72-0.78; a better hand model is the Phase 4 lever.",
         "COCO poses are action photos, not held gestures — t_pose / raise_hand "
-        "test lower for this reason.",
+        "test lower for this reason; squat auto-labels are noisy.",
     ]:
         doc.add_paragraph(t, style="List Bullet")
 

@@ -33,11 +33,13 @@ FEATURE_DIM = RH_PRESENT + 1            # 152
 
 # ---- classes ----
 # `idle` must always be present (CLAUDE.md). Order is the label index order.
+# Cut 2026-09-01 (see CLAUDE.md "Target classes"): i_love_you + rock — MediaPipe
+# Hands can't resolve them vs two_finger on our footage; heart — no dataset.
 CLASSES = [
     "idle",
     "raise_right_hand", "raise_left_hand", "sit", "squat", "laying",
-    "ok", "i_love_you", "rock", "two_finger", "thumb",
-    "heart", "mini_heart", "t_pose", "glico_pose",
+    "ok", "two_finger", "thumb",
+    "mini_heart", "t_pose", "glico_pose",
 ]
 
 # classes that flip to another class under mirroring; the rest keep their label

@@ -26,8 +26,7 @@ OUT = ROOT / "results" / "phase3"
 EVAL_MEANS = {
     "cross_domain": "external train, s01/s02 test — a real cross-subject + cross-domain number",
     "held_out_external": "cross-subject within HaGRID (same webcam domain)",
-    "aug_only_leak": "train = augmented s01 frames — a leaked number (except sit@s02)",
-    "pending_data": "no viable training path — not modelled, see section 6",
+    "aug_only_leak": "train = augmented s01/s02 frames — a leaked number (except sit@s02)",
 }
 
 
@@ -96,8 +95,8 @@ def main():
     nreal = sum(1 for r in primary["per_class"].values()
                 if r["eval_type"] in ("cross_domain", "held_out_external"))
     v = doc.add_paragraph()
-    r = v.add_run(f"Result: a usable {nmod}-class baseline. {npend} classes have "
-                  f"no training data and are held for Phase 6.")
+    r = v.add_run(f"Result: a usable {nmod}-class baseline (15 target classes, "
+                  f"3 cut). Every modelled class scores >= 0.6.")
     r.bold = True
     r.font.size = Pt(12)
     r.font.color.rgb = RGBColor(0x1a, 0x7f, 0x37)
@@ -107,18 +106,15 @@ def main():
         + f".  Over just the {nreal} that are a real generalisation test "
         "(external train, our test): "
         + " / ".join(f"{m} {e['macro_f1_real_eval']:.2f}" for m, e in evals.items())
-        + ". Every modelled class scores >= 0.6. `mini_heart` was recovered from "
-        "0.00 to ~0.92 F1 in this pass: HaGRIDv2's hand-heart gives the right "
-        "handshape, and because each hand is normalised on its own wrist, only "
-        "the body pose carried the chest-vs-overhead gap — an arm-elevation "
-        "augmentation (features/augment.raise_arms) closes it with no new data. "
-        "`i_love_you` and `heart` are still NOT modelled. For `i_love_you` this "
-        "is now known to be a BACKBONE limit, not a data gap: 606 real ILY "
-        "images were pulled from 5 Roboflow ASL datasets and trained on — recall "
-        "stayed 0.00 and `rock` fell 0.78->0.48, because MediaPipe Hands on "
-        "s01's conversational-distance wrist-crop reports every finger curled "
-        "for i_love_you / rock / two_finger alike (they become the same feature "
-        "vector). `heart` has no dataset (COCO-mining branch wired, not run)."
+        + ". `mini_heart` was recovered from 0.00 to ~0.8 F1 with an "
+        "arm-elevation augmentation (features/augment.raise_arms) + an "
+        "inter-wrist-distance feature — no new data. `i_love_you`, `rock` and "
+        "`heart` were CUT: MediaPipe Hands reports every finger curled for "
+        "i_love_you / rock / two_finger alike on s01's footage (same feature "
+        "vector — tried aug s01, 606 real Roboflow ILY images, a two-stage tight "
+        "crop; none separated them), and heart has no dataset (55 noisy COCO "
+        "hits). Cutting `rock` FIXED `two_finger`: 0.72 -> 0.94. Full data "
+        "history is in results/phase2/dataset_report.docx §7-8."
     )
 
     doc.add_heading("1. Architecture — where this sits", 1)
@@ -188,14 +184,14 @@ def main():
         )
     else:
         doc.add_paragraph(
-            "The first Phase 3 pass (12 modelled classes) compared both: LightGBM "
-            "macro-F1 0.88 vs RandomForest 0.87, but LightGBM's `sit`@s02 was "
-            "0.45 vs RF 0.68 and its confidences sat at ~1.0 on everything "
-            "(useless for the Phase 5 idle threshold) — so RF is the working "
-            "default. This pass (mini_heart added, 13 classes) re-ran RF only: "
-            "the SKUBA laptop is down to ~0.45 GB free RAM and LightGBM's "
-            "15-class histogram build swaps for 15+ min. The LGBM head-to-head "
-            "re-runs on Colab in Phase 4, where the model lock is decided anyway."
+            "An early pass compared both: LightGBM macro-F1 0.88 vs RandomForest "
+            "0.87, but LightGBM's `sit`@s02 was 0.45 vs RF 0.68 and its "
+            "confidences sat at ~1.0 on everything (useless for the Phase 5 idle "
+            "threshold) — so RF is the working default. The 12-class pass re-ran "
+            "RF only: the SKUBA laptop is down to ~0.45 GB free RAM and "
+            "LightGBM's multiclass histogram build swaps for 15+ min. The LGBM "
+            "head-to-head re-runs on Colab in Phase 4, where the model lock is "
+            "decided anyway."
         )
 
     doc.add_heading("4. Per-class results (RandomForest)", 1)
@@ -213,56 +209,52 @@ def main():
 
     doc.add_heading("5. sit — the one clean cross-person number", 1)
     doc.add_paragraph(
-        "`sit` trains on augmented s01 frames only, so its s02 test frames "
-        "(different person, session, room) are a genuine cross-person check."
+        "`sit` still trains on augmented s01 frames only, so its s02 test frames "
+        "(different person, session, room) are a genuine cross-person check. This "
+        "number will change once the COCO posture mine lands (Phase 4) and `sit` "
+        "becomes a real cross-domain class."
     )
     _table(doc, ["subject", "RF recall", "meaning"], [
         ["s01 (315 frames)", "1.00", "training basis — leaked, ignore"],
         ["s02 (60 frames)", str(sit_s02.get("rf", "-")), "clean cross-person — the honest sit number"],
     ])
 
-    doc.add_heading("6. The pending-data classes + how mini_heart was fixed", 1)
+    doc.add_heading("6. mini_heart fixed; i_love_you / rock / heart cut", 1)
     doc.add_paragraph(
-        "mini_heart (previously pending) is now trained: HaGRIDv2 hand_heart "
-        "(chest-level finger-heart) + an arm-elevation augmentation that shifts "
-        "both forearms + hand points up by a shared offset, turning the "
-        "chest-level rows into overhead ones. The handshape rides along untouched "
-        "because each hand is normalised on its own wrist. A new derived feature, "
-        "inter-wrist distance in body units, gives the model a direct "
-        "hands-together signal. Result: mini_heart 0.00 -> "
-        f"{primary['per_class'].get('mini_heart', {}).get('f1', 0):.2f} F1, and "
-        "raise_right_hand improved as a side effect (cleaner arms-overhead negatives)."
+        "mini_heart is trained on HaGRIDv2 hand_heart (a chest-level "
+        "finger-heart) + an arm-elevation augmentation that shifts both forearms "
+        "+ hand points up by a shared offset, turning the chest-level rows into "
+        "overhead ones. The handshape rides along untouched because each hand is "
+        "normalised on its own wrist. A new derived feature, inter-wrist distance "
+        "in body units, gives the model a direct hands-together signal. Result: "
+        "mini_heart 0.00 -> "
+        f"{primary['per_class'].get('mini_heart', {}).get('f1', 0):.2f} F1 "
+        "(45-frame test — run-to-run variance is wide, watch in Phase 4)."
     )
     doc.add_paragraph(
-        "i_love_you and heart still have no training data. They are in the "
-        "vocabulary and in test.npz but the model has no label for them. Their "
-        "test frames land as:"
-    )
-    pl = primary.get("pending_data_lands_as", {})
-    _table(doc, ["pending class", "test frames land as (count)"],
-           [[c, ", ".join(f"{k} {v}" for k, v in w.items())] for c, w in pl.items()])
-    doc.add_paragraph(
-        "i_love_you -> rock: 606 real ILY images were pulled from 5 Roboflow ASL "
-        "datasets and trained on — recall stayed 0.00 and rock fell 0.78->0.48. "
-        "MediaPipe Hands reports every finger curled for i_love_you / rock / "
-        "two_finger on s01's footage (they are the same feature vector); a "
-        "two-stage tight crop was tested and did not change this. It needs a "
-        "hand-model swap, closer re-recording, or Phase 6 data. "
-        "heart -> mini_heart: the COCO heart-mining filter finds only 55 "
-        "candidates in all of COCO-train (mostly false positives) — too few. "
-        "Phase 6. Full data-side history: results/phase2/dataset_report.docx."
+        "i_love_you, rock and heart were removed from the vocabulary. i_love_you "
+        "and rock: MediaPipe Hands reports every finger curled for "
+        "i_love_you / rock / two_finger alike on s01's footage — the same "
+        "feature vector. Everything was tried: aug(s01), 606 real ILY images "
+        "from 5 Roboflow ASL datasets, a two-stage tight crop. None separated "
+        "them, and training i_love_you dragged rock from 0.78 to 0.48. two_finger "
+        "is kept — HaGRID anchors 'loose fist + upright body' to that label and "
+        "it still works; cutting rock actually took two_finger from 0.72 to 0.94. "
+        "heart: the overhead two-arm heart is in no dataset and the COCO-mining "
+        "filter finds only 55 candidates (mostly false positives). Revisit "
+        "i_love_you / rock if a better hand model is adopted (Phase 4) — the 606 "
+        "ILY rows are kept. Full history: results/phase2/dataset_report.docx §7-8."
     )
 
     hg = OUT / "handgap_rock.jpg"
     if hg.exists():
-        doc.add_heading("7. Why the derived features were needed (rock)", 1)
+        doc.add_heading("7. The hand-resolution limit (illustration)", 1)
         doc.add_paragraph(
             "s01 `rock` hand landmarks (row 1) vs s01 `i_love_you` (row 2) vs "
             "HaGRID `rock` (row 3). Rows 1-2 are the same person in one session "
-            "and nearly identical. Row 3 shows the HaGRID wrist-crop often misses "
-            "the hand (sized by shoulder width, unreliable when hips are out of "
-            "frame). Scale-invariant angle features + dropping i_love_you from "
-            "training took `rock` from 0.00 to ~0.85."
+            "and MediaPipe returns near-identical skeletons for two different "
+            "handshapes — this is why i_love_you and rock were cut. Row 3 shows "
+            "the HaGRID wrist-crop often missing the hand entirely."
         )
         doc.add_picture(str(hg), width=Inches(6.0))
 
@@ -273,28 +265,29 @@ def main():
                     if a != b and a in modset and b in modset), reverse=True)[:10]
     _table(doc, ["true", "predicted as", "count"], [[a, b, cnt] for cnt, a, b in pairs])
     doc.add_paragraph(
-        "The residual confusions are sensible: rock<->two_finger (adjacent "
-        "handshapes), and several gestures -> idle at ~0.7 recall — a frame where "
-        "the hand isn't clearly detected falls to idle. idle precision is ~0.45 "
-        "for the same reason. Phase 5 temporal smoothing (majority vote over N "
-        "frames) recovers most of this: a gesture held for ~1 s is ~30 frames."
+        "The dominant residual confusion is several gestures -> idle at ~0.7 "
+        "recall — a frame where the hand or pose isn't clearly detected falls to "
+        "idle. idle precision is ~0.43 for the same reason (recall is 1.0). "
+        "Phase 5 temporal smoothing (majority vote over N frames) recovers most "
+        "of this: a gesture held for ~1 s is ~30 frames."
     )
 
     doc.add_heading("9. Phase 4 (model exploration on this fixed pipeline)", 1)
     for i, t in enumerate([
-        "Add an MLP as the third candidate; lock one of {RF, LGBM, MLP} with a "
-        "documented rationale (IMPLEMENTATION_PLAN Phase 4).",
+        "LightGBM vs RF head-to-head on Colab (13-class laptop RAM blocker); add "
+        "an MLP as the third candidate; lock one with a documented rationale.",
         "Compare feature sets properly: raw vs derived vs both (the flag exists).",
+        "De-leak sit / squat / laying — the COCO _classify_coco posture branches "
+        "are wired; extract on Colab so they become cross_domain.",
         "Tune per-class confidence thresholds on a validation slice, then wire "
-        "the idle/unknown fallback (Phase 3 deliverable, carried into Phase 5).",
+        "the idle/unknown fallback (idle over-triggers, precision 0.43).",
         "Re-extract COCO with a person-bbox crop — COCO gives the bbox; cropping "
-        "to it before MediaPipe should lift raise_hand / t_pose recall (now "
-        "~0.75) by removing the wrong-person detections.",
-        "Evaluate a hand-landmark model swap — rock/ok/two_finger sit at "
-        "0.72-0.78 and i_love_you is unmodellable because MediaPipe Hands can't "
-        "resolve fingers on s01's footage (crop reframing was tested, no gain).",
-        "i_love_you / heart -> Phase 6 field recordings (or the hand-model swap "
-        "for i_love_you).",
+        "to it before MediaPipe should lift raise_hand / t_pose recall (~0.75).",
+        "Evaluate a hand-landmark model swap — ok / two_finger sit at ~0.75-0.78 "
+        "and the cut i_love_you / rock are unmodellable because MediaPipe Hands "
+        "can't resolve fingers on s01's footage (crop reframing was tested, no "
+        "gain). This is the biggest lever left; re-add i_love_you / rock if it "
+        "works.",
     ], 1):
         doc.add_paragraph(f"{i}. {t}", style="List Bullet")
 

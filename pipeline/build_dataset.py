@@ -6,9 +6,9 @@ TRAIN comes from external datasets (data/features_ext/), cleaned + augmented.
 TEST is every original s01/s02 frame (data/features/), never augmented — a
 genuine cross-domain / cross-subject held-out set.
 
-Six classes have no external data (`sit`, `laying`, `squat`, `i_love_you`,
-`heart`, `glico_pose`): train = augmented copies of the s01/s02 frames, the
-originals still go to test. That is a leaky number for those six — flagged
+`glico_pose` has no external data (and `sit`/`squat`/`laying` fall back to this
+if the COCO posture mine comes up empty): train = augmented copies of the
+s01/s02 frames, the originals still go to test — a leaky number, flagged
 `aug_only` in the card. `thumb` has no s01 data, so 15% of its external rows are
 held out as its test.
 
@@ -33,19 +33,10 @@ FEAT_EXT = ROOT / "data" / "features_ext"  # external, per (source,class)
 OUT = ROOT / "data" / "dataset"
 SEED = 20260831
 
-# Not modelled — in the class list + test.npz, 0 train rows:
-#   i_love_you : NOT a data gap. 606 real ILY images (roboflow_ily source, in
-#                data/features_ext/) were pulled + trained on -> recall 0.00,
-#                and rock fell 0.78 -> 0.48. MediaPipe Hands can't resolve
-#                finger extension on s01's conversational-distance crop, so
-#                i_love_you / rock / two_finger are the same vector. Reproduced
-#                backbone failure (CLAUDE.md #4). Fix = upscale the wrist crop
-#                (Phase 4) or re-record. See docs/phase3_baseline.md.
-#   heart      : `_classify_coco` heart branch is wired; re-run `coco_pose` to
-#                mine it. Yield unverified — keep pending until the count is seen.
-#   mini_heart : NOW MODELLED — HaGRIDv2 hand_heart (chest-level) + arm-elevation
-#                augmentation (features/augment.raise_arms, docs R2.4).
-PENDING_DATA = {"i_love_you", "heart"}
+# i_love_you, rock, heart were CUT from CLASSES on 2026-09-01 (see CLAUDE.md).
+# The `for cls in CLASSES` loop below never sees them; their leftover
+# data/features_ext/*.npz (roboflow_ily, hagrid__rock) load but are ignored.
+PENDING_DATA: set[str] = set()
 
 # external data is chest-level but the class is performed overhead -> expand each
 # external row into raised-arm variants before the normal augmentation.
@@ -55,10 +46,10 @@ ARMS_UP = {"mini_heart"}
 # listed so they still build if the COCO posture mine yields nothing; once
 # data/features_ext/coco_pose__{sit,squat,laying}.npz exist they take the
 # external (cross_domain) path instead.
-AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
+AUG_ONLY = {"sit", "laying", "squat", "glico_pose"}
 # aux external labels that are really "not a target gesture"
 AUX_TO_CLASS = {"_ily_negative": "idle", "_coco_idle": "idle"}
-HANDSHAPE = {"ok", "rock", "thumb", "two_finger", "mini_heart", "_ily_negative"}
+HANDSHAPE = {"ok", "thumb", "two_finger", "mini_heart", "_ily_negative"}
 THUMB_TEST_FRAC = 0.15
 
 # keep the class balance sane: subsample external originals to this before

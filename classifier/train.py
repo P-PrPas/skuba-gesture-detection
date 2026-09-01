@@ -43,7 +43,10 @@ def load_split(name: str, feat_mode: str):
 #   idle: huge, and gesture frames near a class boundary fall into it (idle
 #         recall is already 1.0, so trading a little of it for gesture recall
 #         and idle precision is a good deal).
-AUG_ONLY = {"sit", "laying", "squat", "i_love_you", "heart", "glico_pose"}
+# classes whose train rows are augmented s01/s02 only -> the model should need
+# strong evidence before predicting one. Drop a class from here once it gains a
+# real external source (sit/squat/laying: when the COCO posture mine lands).
+AUG_ONLY = {"sit", "laying", "squat", "glico_pose"}
 WEIGHT_MULT = {c: 0.35 for c in AUG_ONLY} | {"idle": 0.6}
 
 
