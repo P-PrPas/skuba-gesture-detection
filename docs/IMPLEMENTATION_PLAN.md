@@ -144,6 +144,18 @@ test) are data/feature-gap limited; Phase 6 field recordings are the real gate.
 
 **Exit criterion:** stable frame rate on target hardware, and smoothing measurably reduces flicker/false triggers compared to raw per-frame output.
 
+**Status: mostly DONE (2026-09-03).** `docs/phase5.md`.
+- `pipeline/runtime.py` — `frame_to_vec()` (now shared with
+  `extract_features.py`), `GestureClassifier`, `TemporalSmoother`.
+- `pipeline/demo.py` — OpenCV GUI (skeleton overlay, gesture label, confidence
+  bar, window dots, FPS/latency). `--video` / `--benchmark` / `--record` modes.
+- Smoothing locked: **N = 7**, global floor 0.20 (`scripts/phase5_flicker.py`:
+  −66 % label switches vs raw, accuracy 0.873 → 0.896). `ARCHITECTURE.md`.
+- Latency: ~14 FPS on the dev laptop (RTX 3050, CPU pipeline); classifier is
+  1.6 ms, backbone is the budget; `--hand-every 2` → ~19 FPS.
+- **Open:** benchmark + GPU delegate on the Acer/Ubuntu; re-extract the drifted
+  `data/features/*.npz` s01/s02 set before Phase 6.
+
 ## Phase 6 — Field testing & iteration
 
 **Goal:** find and close the gap between lab conditions and the robot's real operating environment.

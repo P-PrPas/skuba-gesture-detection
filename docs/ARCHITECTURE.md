@@ -109,7 +109,15 @@ Operates on the stream of per-frame `(class_label, confidence)` outputs, not on 
 - Emit the majority class in the window, using its mean confidence.
 - If the majority class's mean confidence is below its class-specific threshold, emit `idle`/`unknown` instead.
 
-N and per-class thresholds are tuning parameters set during Phase 4/5 using validation data — document final values here once locked.
+**Locked (Phase 5, `pipeline/runtime.py::TemporalSmoother`):**
+- **N = 7** frames (~0.5 s at ~13 FPS). Chosen by `scripts/phase5_flicker.py`
+  on the s01/s02 clips: cuts label switches from 7.0 → 2.4 per 100 frames
+  (−66 %) while *raising* clip accuracy 0.873 → 0.896, lag ~2 frames. N=5 left
+  too much flicker, N≥9 only bought ~0.5 more switches/100f for more lag.
+- **Confidence floor = 0.20 global**, not per-class. Phase 4 Track E showed the
+  per-class thresholds fit on the val split do not transfer to the cross-domain
+  test set (val confidences run ~0.2 high). Real per-class thresholds wait for
+  Phase 6 field confidences. `classifier/models/mlp.thresholds.json`.
 
 ## Versioning note
 

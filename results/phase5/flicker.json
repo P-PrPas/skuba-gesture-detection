@@ -1,0 +1,43 @@
+{
+  "model": "mlp",
+  "floor": 0.2,
+  "clips": 13,
+  "by_N": {
+    "1": {
+      "switches_per_100f": 6.95,
+      "accuracy": 0.873,
+      "lag_frames": 1.4
+    },
+    "3": {
+      "switches_per_100f": 4.35,
+      "accuracy": 0.88,
+      "lag_frames": 1.8
+    },
+    "5": {
+      "switches_per_100f": 2.79,
+      "accuracy": 0.889,
+      "lag_frames": 2.2
+    },
+    "7": {
+      "switches_per_100f": 2.36,
+      "accuracy": 0.896,
+      "lag_frames": 2.3
+    },
+    "9": {
+      "switches_per_100f": 2.43,
+      "accuracy": 0.903,
+      "lag_frames": 2.5
+    },
+    "11": {
+      "switches_per_100f": 2.26,
+      "accuracy": 0.902,
+      "lag_frames": 2.6
+    },
+    "15": {
+      "switches_per_100f": 1.73,
+      "accuracy": 0.903,
+      "lag_frames": 2.6
+    }
+  },
+  "recommended_N": 7
+}

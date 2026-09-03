@@ -20,11 +20,10 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-from backbone.hands import HandLandmarker, wrist_crop_box
+from backbone.hands import HandLandmarker
 from backbone.pose import PoseEstimator
-from features.fuse import fuse
-from features.normalize import normalize_body, normalize_hand
 from features.schema import CLASSES
+from pipeline.runtime import frame_to_vec
 
 ROOT = Path(__file__).resolve().parents[1]
 CLIPS_DIR = ROOT / "data" / "clips"
@@ -54,19 +53,11 @@ def extract_clip(row: dict, pose: PoseEstimator, hands: HandLandmarker) -> dict 
         if not ok:
             break
         fi += 1
-        kp = pose.estimate(frame)
-        if kp is None:
+        v, kp, _, _ = frame_to_vec(frame, pose, hands)  # shared with pipeline.demo
+        if v is None:
             no_body += 1
             continue
-        body_norm = normalize_body(kp.xy)
-        scale = kp.shoulder_width or 80.0
-        hand_norms = []
-        for wrist in (kp.left_wrist, kp.right_wrist):
-            x0, y0, x1, y1 = wrist_crop_box(wrist, scale, frame.shape)
-            crop = frame[y0:y1, x0:x1]
-            lm = hands.detect(crop)
-            hand_norms.append(normalize_hand(lm) if lm is not None else None)
-        vecs.append(fuse(body_norm, hand_norms[0], hand_norms[1]))
+        vecs.append(v)
         frames.append(fi)
     cap.release()
     if not vecs:
