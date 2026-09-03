@@ -220,6 +220,25 @@ regenerate with the script):
 the per-person labels — between two similar people standing close together
 (`2p_*` clips reproduced it). Default is now `1`.
 
+### Two people close together
+
+Composited `raise_left` + `raise_right` at a shrinking horizontal gap
+(centre-to-centre px; each person ≈ 540 px wide), both multi-person paths:
+
+| gap | overlap | result |
+|---|---|---|
+| 540 / 380 px | 0–30 % | **both correct, 2 clean ids** — `raise_left` / `raise_right` |
+| 260 px | ~50 % | breaks — wrong classes (`thumb` / `unknown` / `sit`), id count 3–4 (churn), one person sometimes lost |
+| 160 px | ~70 % | fully broken — both → `sit`, only a handful of frames detect anyone, id churn |
+
+So people can stand **shoulder-to-shoulder (≈ 30 % overlap) and it still works**;
+past ~half-overlap the crop pulls in the neighbour (`estimate_crop` picks the
+wrong person), the trackers churn ids, and MediaPipe multi-pose bleeds limbs
+between skeletons. `results/phase5/demo_2p_close.mp4`. For a service robot,
+people interacting from arm's length apart are fine; a dense group or one
+person directly behind another is a hard limit of the crop-then-pose approach —
+Phase 6 field data will show how often it matters.
+
 ## Known items / carry-over
 
 - **Acer benchmark still pending** (Phase 1 open item too). Expect a bit slower
