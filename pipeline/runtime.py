@@ -96,12 +96,14 @@ class SmoothOut:
 
 class TemporalSmoother:
     """Last-N-frames majority vote. Emits the window's plurality class with its
-    mean confidence; if that mean is below `floor`, emits `idle` instead (the
-    idle/unknown fallback). N and floor are the Phase 5 tuning knobs."""
+    mean confidence; if that mean is below `floor`, emits `fallback` ("unknown")
+    instead. A *confident* `idle` prediction still comes through as "idle" —
+    "unknown" means "not sure", not "nothing happening". N and floor are the
+    Phase 5 tuning knobs."""
 
-    def __init__(self, n: int = 7, floor: float = 0.2, idle: str = "idle"):
+    def __init__(self, n: int = 7, floor: float = 0.2, fallback: str = "unknown"):
         self.floor = floor
-        self.idle = idle
+        self.fallback = fallback
         self._buf: deque = deque(maxlen=max(1, n))
 
     @property
@@ -119,25 +121,24 @@ class TemporalSmoother:
         win_label = Counter(l for l, _ in self._buf).most_common(1)[0][0]
         cs = [c for l, c in self._buf if l == win_label]
         mean_c = sum(cs) / len(cs)
-        out = win_label if mean_c >= self.floor else self.idle
+        out = win_label if mean_c >= self.floor else self.fallback
         return SmoothOut(out, mean_c, label, [l for l, _ in self._buf])
 
 
 def demo() -> None:
     # smoother: plurality + floor
     s = TemporalSmoother(n=5, floor=0.5)
-    seq = [("ok", 0.9)] * 4 + [("idle", 0.4)] * 1
-    for lab, c in seq:
+    for lab, c in [("ok", 0.9)] * 4 + [("idle", 0.9)]:
         r = s.update(lab, c)
     assert r.label == "ok" and r.raw_label == "idle", r          # 4/5 still ok
-    for _ in range(4):
-        r = s.update("idle", 0.4)
-    assert r.label == "idle", r                                  # window flushed
-    # low-confidence plurality → idle fallback
+    for _ in range(5):
+        r = s.update("idle", 0.9)
+    assert r.label == "idle", r                                  # confident idle passes
+    # low-confidence plurality -> "unknown", not "idle"
     s.reset()
     for _ in range(5):
         r = s.update("t_pose", 0.30)
-    assert r.label == "idle" and abs(r.confidence - 0.30) < 1e-6, r
+    assert r.label == "unknown" and abs(r.confidence - 0.30) < 1e-6, r
     # window resize keeps recent history
     s.set_window(3)
     assert s.n == 3 and len(s._buf) == 3

@@ -118,6 +118,10 @@ Operates on the stream of per-frame `(class_label, confidence)` outputs, not on 
   per-class thresholds fit on the val split do not transfer to the cross-domain
   test set (val confidences run ~0.2 high). Real per-class thresholds wait for
   Phase 6 field confidences. `classifier/models/mlp.thresholds.json`.
+- Below the floor the smoother emits **`unknown`** (not confident), distinct
+  from a *confident* `idle` prediction (person present, doing nothing
+  recognised). Both are "robot does nothing", but the log tells them apart.
+  `pipeline/demo.py --floor` overrides the 0.20 for showing uncertainty.
 
 ## Versioning note
 

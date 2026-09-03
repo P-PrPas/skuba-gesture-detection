@@ -18,11 +18,19 @@ python -m pipeline.demo                              # webcam
 python -m pipeline.demo --video data/clips/ok/ok_01.mp4
 python -m pipeline.demo --benchmark --video <clip>   # latency / FPS, headless
 python -m pipeline.demo --video <clip> --record out.mp4   # annotated mp4, headless
+python -m pipeline.demo --video data/main.MOV --record demo.mp4 \
+       --labels data/segments.csv --floor 0.45       # + ground-truth overlay + score
 python scripts/phase5_flicker.py                     # N sweep
 ```
 
 GUI keys: `q` quit · `space` pause · `[` `]` window N∓1 · `h` cycle hand-every
 (1/2/3) · `r` reset smoother · `s` screenshot.
+
+`--floor T` — below-window-confidence `T` the smoother emits **`unknown`**
+(orange in the GUI), distinct from a confident **`idle`** (gray). The lock is
+0.20; pass a higher `--floor` to make uncertainty visible in a demo.
+`--labels segments.csv` overlays the ground-truth class for a `--video` and
+prints a frame-accuracy tally at the end (cut classes count as misses).
 
 ## Results
 
@@ -52,6 +60,39 @@ for the Acer):**
 *amortised — hands run every K-th frame, last landmarks reused between.
 Hands are ~70 % of a full frame (matches Phase 1). The 0.3 MB MLP is 1.6 ms —
 the classifier is free; the backbone is the whole budget.
+
+**End-to-end run — `data/main.MOV`** (`results/phase5/demo_main.mp4`, the full
+76 s s01 take, 15 gestures back-to-back, GT overlay + `--floor 0.45`):
+
+| GT segment | frames | accuracy | main misroute |
+|---|---|---|---|
+| idle | 60 | **1.00** | |
+| raise_right_hand | 96 | 0.72 | 24 → idle (arm-lowering tail) |
+| raise_left_hand | 45 | **1.00** | |
+| ok | 45 | 0.71 | 7 → sit, 5 → idle |
+| two_finger | 87 | **1.00** | |
+| mini_heart | 45 | 0.73 | 11 → unknown (low conf) |
+| t_pose | 36 | 0.78 | 5 → sit |
+| glico_pose | 66 | 0.95 | (aug-only class) |
+| squat | 108 | **1.00** | (aug-only class) |
+| sit | 314 | 0.96 | 10 → unknown |
+| **overall (in-vocab)** | **902** | **91.6 %** | |
+
+Per-frame, N=7 smoothed, floor 0.45. Matches the Phase 4 offline numbers
+(raise_*_hand ~0.76, mini_heart ~0.73, idle/sit/two_finger strong) — main.MOV
+is the s01 take, already in the Phase 4 test set, so this confirms the live
+pipeline reproduces the offline accuracy rather than adding new evidence.
+
+The 4 cut classes in the take (`i_love_you`, `rock`, `heart` ×2) correctly land
+on **`unknown`** — the classifier's max-prob for an out-of-vocabulary gesture
+stays under the floor, so the smoother refuses to guess. `squat` / `glico_pose`
+are aug-only-leak classes (Phase 4), so their high scores here are not a
+generalisation claim.
+
+Gotcha found + fixed: raw `.MOV` files carry a rotation flag that
+`cv2.VideoCapture` ignores — the demo now sets `CAP_PROP_ORIENTATION_AUTO` (and
+has a `--rotate` fallback). The pre-cut `data/clips/*.mp4` are already upright
+(ffmpeg baked it in), so `extract_features.py` was never affected.
 
 ## Known items / carry-over
 

@@ -5,7 +5,13 @@ smoothing window, and an FPS/latency readout).
     python -m pipeline.demo                       # webcam 0
     python -m pipeline.demo --video clip.mp4      # a video file, looped
     python -m pipeline.demo --benchmark           # headless latency/FPS report
-    python -m pipeline.demo --window 7 --hand-every 2 --model mlp
+    python -m pipeline.demo --video x.MOV --record out.mp4 --labels data/segments.csv
+    python -m pipeline.demo --window 7 --hand-every 2 --floor 0.45 --model mlp
+
+`--floor T`: below window-confidence T the smoother emits "unknown" (orange in
+the GUI) — distinct from a *confident* "idle" (gray). `--labels segments.csv`
+overlays the ground-truth class for a `--video` and prints a frame-accuracy
+tally. `.MOV` rotation metadata is auto-applied; `--rotate {90,180,270}` if not.
 
 Keys:  q quit   space pause   [ / ]  window N-/+   h  cycle hand-every (1/2/3)
        r reset smoother   s screenshot -> results/phase5/
@@ -18,6 +24,7 @@ frame). See docs/phase5.md.
 from __future__ import annotations
 
 import argparse
+import csv
 import time
 from collections import deque
 from pathlib import Path
@@ -27,6 +34,7 @@ import numpy as np
 
 from backbone.hands import HandLandmarker
 from backbone.pose import PoseEstimator
+from features.schema import CLASSES
 from pipeline.runtime import GestureClassifier, TemporalSmoother, frame_to_vec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,7 +56,24 @@ def _panel(img, x, y, w, h, alpha=0.55):
                                             np.zeros_like(sub), alpha, 0)
 
 
-def draw(frame, kp, boxes, out, fps, tm, n, hand_every):
+def _load_truth(csv_path, video_name):
+    """segments.csv -> [(start_s, end_s, class), ...] for one source video."""
+    rows = []
+    with open(csv_path, newline="", encoding="utf-8") as f:
+        for r in csv.DictReader(f):
+            if Path(r["source_video"]).name == Path(video_name).name:
+                rows.append((float(r["start_s"]), float(r["end_s"]), r["class"]))
+    return sorted(rows)
+
+
+def _truth_at(rows, t):
+    for a, b, c in rows:
+        if a <= t < b:
+            return c
+    return None
+
+
+def draw(frame, kp, boxes, out, fps, tm, n, hand_every, gt=None):
     h, w = frame.shape[:2]
     if kp is not None:
         for i, j in _EDGES:
@@ -63,8 +88,7 @@ def draw(frame, kp, boxes, out, fps, tm, n, hand_every):
                     0.5, CYAN, 1, cv2.LINE_AA)
 
     # gesture panel (top-left) — width scales to the label, font shrinks to fit
-    is_idle = out.label in ("idle", "unknown")
-    col = GRAY if is_idle else GREEN
+    col = {"unknown": ORANGE, "idle": GRAY}.get(out.label, GREEN)
     label = out.label.upper()
     fs = 1.3
     while cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, fs, 3)[0][0] > 380 and fs > 0.6:
@@ -80,6 +104,16 @@ def draw(frame, kp, boxes, out, fps, tm, n, hand_every):
     cv2.rectangle(frame, (bx, by), (bx + int(bw * out.confidence), by + 16), col, -1)
     cv2.putText(frame, f"{out.confidence:.2f}", (bx + bw + 8, by + 14),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, WHITE, 1, cv2.LINE_AA)
+
+    # ground truth (top-centre) when --labels is given
+    if gt is not None:
+        gt_lbl, ok = gt
+        gc = GREEN if ok else (60, 60, 235)
+        t = f"GT: {gt_lbl or '-'}"
+        tw = cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, 0.8, 2)[0][0]
+        _panel(frame, w // 2 - tw // 2 - 14, 12, tw + 28, 44)
+        cv2.putText(frame, t, (w // 2 - tw // 2, 42),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, gc, 2, cv2.LINE_AA)
 
     # smoothing window dots (bottom-left)
     for k, lab in enumerate(out.window):
@@ -103,7 +137,16 @@ def _open(args):
     cap = cv2.VideoCapture(src)
     if not cap.isOpened():
         raise SystemExit(f"cannot open video source {src!r}")
+    cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)  # bake in .MOV rotation metadata
     return cap
+
+
+_ROT = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
+        270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+
+
+def _rot(frame, deg):
+    return cv2.rotate(frame, _ROT[deg % 360]) if deg % 360 in _ROT else frame
 
 
 def benchmark(args):
@@ -120,6 +163,7 @@ def benchmark(args):
             if not ok:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
+            frame = _rot(frame, args.rotate)
             if warm < 10:                       # let XNNPACK / caches settle
                 frame_to_vec(frame, pose, hands, detect_hands=(i % he == 0),
                              prev_hand_norms=prev)
@@ -155,7 +199,8 @@ def live(args):
     cap = _open(args)
     pose, hands = PoseEstimator("mediapipe"), HandLandmarker()
     clf = GestureClassifier(args.model)
-    sm = TemporalSmoother(n=args.window, floor=clf.floor)
+    sm = TemporalSmoother(n=args.window,
+                          floor=args.floor if args.floor is not None else clf.floor)
     hand_every = max(1, args.hand_every)
     prev_hn = (None, None)
     ft = deque(maxlen=30)
@@ -163,27 +208,38 @@ def live(args):
     i = 0
     SHOTS.mkdir(parents=True, exist_ok=True)
 
+    truth = None
+    src_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
+    hits = tot_gt = 0
+    if args.labels:
+        truth = _load_truth(args.labels, args.video or "")
+        print(f"ground truth: {len(truth)} labelled segments")
+
     writer = None
-    if args.record:                       # headless: annotate --video -> mp4
-        w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        fps_out = cap.get(cv2.CAP_PROP_FPS) or 30
+    fps_out = cap.get(cv2.CAP_PROP_FPS) or 30
+    if args.record:
         Path(args.record).parent.mkdir(parents=True, exist_ok=True)
-        writer = cv2.VideoWriter(args.record, cv2.VideoWriter_fourcc(*"mp4v"),
-                                 fps_out, (w, h))
-    print("demo running" + (f" -> {args.record}" if writer else
+    print("demo running" + (f" -> {args.record}" if args.record else
                             " — focus the window for keys"))
 
     while True:
         if not paused:
             ok, frame = cap.read()
             if not ok:
-                if args.video and not writer:
+                if args.video and not args.record:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
                 break
+            frame = _rot(frame, args.rotate)
             if args.mirror and not args.video:
                 frame = cv2.flip(frame, 1)
+            if args.record and writer is None:   # size from the real (rotated) frame
+                hh, ww = frame.shape[:2]
+                for cc in ("avc1", "mp4v"):
+                    writer = cv2.VideoWriter(args.record,
+                                             cv2.VideoWriter_fourcc(*cc), fps_out, (ww, hh))
+                    if writer.isOpened():
+                        break
 
             tmg, t0 = {}, time.perf_counter()
             did_hands = i % hand_every == 0
@@ -201,8 +257,16 @@ def live(args):
             ft.append(time.perf_counter())
             i += 1
 
+        gt = None
+        if truth is not None:
+            g = _truth_at(truth, i / src_fps)
+            gt = (g, g == out.label)
+            if g in CLASSES:                     # skip cut classes (not in vocab)
+                tot_gt += 1
+                hits += int(g == out.label)
+
         fps = (len(ft) - 1) / (ft[-1] - ft[0]) if len(ft) > 1 else 0.0
-        draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every)
+        draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every, gt=gt)
 
         if writer:
             writer.write(frame)
@@ -228,6 +292,9 @@ def live(args):
             print("saved", fn)
 
     cap.release()
+    if tot_gt:
+        print(f"vs ground truth: {hits}/{tot_gt} in-vocab labelled frames correct "
+              f"({100 * hits / tot_gt:.1f}%)  (transitions + cut classes excluded)")
     if writer:
         writer.release()
         print("wrote", args.record)
@@ -241,13 +308,20 @@ def main():
     ap.add_argument("--video", type=str, default=None)
     ap.add_argument("--model", default="mlp")
     ap.add_argument("--window", type=int, default=7)   # phase5_flicker.py recommendation
+    ap.add_argument("--floor", type=float, default=None,
+                    help="confidence floor below which -> 'unknown' "
+                         "(default: the model's locked 0.20)")
     ap.add_argument("--hand-every", type=int, default=1, dest="hand_every")
     ap.add_argument("--mirror", action="store_true", default=True)
     ap.add_argument("--no-mirror", action="store_false", dest="mirror")
+    ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
+                    help="rotate frames CW before processing (if AUTO metadata fails)")
     ap.add_argument("--benchmark", action="store_true")
     ap.add_argument("--frames", type=int, default=200, help="benchmark frame count")
     ap.add_argument("--record", type=str, default=None,
                     help="headless: annotate --video into this .mp4 (no window)")
+    ap.add_argument("--labels", type=str, default=None,
+                    help="segments.csv — overlay ground truth for --video + score it")
     args = ap.parse_args()
     (benchmark if args.benchmark else live)(args)
 
