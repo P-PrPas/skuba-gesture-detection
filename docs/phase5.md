@@ -143,19 +143,22 @@ Pose runs on each crop (`PoseEstimator.estimate_crop()`, IMAGE mode) for the
 33 landmarks — so the feature vector and the trained classifier are unchanged.
 `DETECT_EVERY` amortises the YOLO cost (run every K frames, hold boxes between).
 
-Same `main3.MOV`, `--detector yolo`, `DETECT_EVERY=2`, imgsz 512
-(`results/phase5/demo_main3_yolo.mp4`):
+Same `main3.MOV`, `--detector yolo`, `DETECT_EVERY=2`, imgsz 512, after the
+crop fixes below (`results/phase5/demo_main3_yolo.mp4`):
 
 | | MediaPipe multi-pose | **YOLO-detect front-end** |
 |---|---|---|
-| frames with 2 people | 29 % | **63 %** |
-| latency p50 | 257 ms (3.9 FPS) | **159 ms (6.3 FPS)** |
-| track id churn (2 real people) | 10 ids | ~6 |
+| frames with 2 people | 29 % | **52 %** |
+| latency p50 | 257 ms (3.9 FPS) | 232 ms (4.3 FPS) |
+| track ids over the clip (2 real people) | 10 | **6** |
 
-**Both more reliable and faster** — YOLO's person detector is trained on COCO's
-huge pose/occlusion variety, so it catches the person on the floor that
-BlazePose's upright-biased detector misses, and running it every 2nd frame at a
-small crop size costs less than MediaPipe's own heavier multi-pose model.
+YOLO's person detector is trained on COCO's huge pose/occlusion variety, so it
+catches the person on the floor that BlazePose's upright-biased detector
+misses. The min-area filter + pose sanity gate drop the false "person" (the
+Pepper mannequin in shot) — so `2 people` went 29 → 52 % *clean*, and the
+track-id churn from 10 → 6. The 22 % crop margin is the cost: bigger crops,
+p50 down to 4.3 FPS (was 6.3 at tight-crop, but that had the mannequin +
+random-class hits). `DETECT_EVERY 3` / imgsz 448 buy the speed back.
 
 **Crop-quality bugs found + fixed** (`scratchpad` diag, then `_process_yolo`):
 - *Tight crop breaks MediaPipe Pose.* At 10 % box padding, 14 % of detections
