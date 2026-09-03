@@ -188,6 +188,38 @@ locked classifier) and only swaps the "who is in frame" step. A full switch to
 GPU (contended on the Acer) and COCO-17 keypoints → a full feature + classifier
 retrain. Confirm on real robot-camera footage in Phase 6.
 
+## Test clips — `scripts/make_test_clips.py`
+
+The recorded material has no single clip covering every action and none with
+two people doing labelled actions. Derived (git-ignored under `data/`,
+regenerate with the script):
+
+- **`data/main_actions.mp4`** — `main.MOV` + `main3.MOV` concatenated (89 s):
+  idle / raise_L / raise_R / sit / squat / laying + the hand gestures, one
+  subject at a time. GT in `data/segments_main_actions.csv`. Single-person
+  pipeline, N=7, floor 0.45, per segment:
+
+  | idle | raise_L | two_finger | squat | sit | laying | glico | raise_R | t_pose | ok |
+  |---|---|---|---|---|---|---|---|---|---|
+  | 100 % | 100 % | 100 % | 100 % | 97 % | 83 % | 94 % | 73 % | 75 % | 71 % |
+
+  (raise_R loses its arm-lowering tail to `idle`; `ok`/`t_pose` drift to sit/idle.
+  This is the Phase 4 picture — the pipeline is fine when the person is *doing*
+  the gesture.)
+
+- **`data/2p_raise_lr.mp4` / `2p_sit_laying.mp4` / `2p_idle_squat.mp4`** —
+  synthetic 2-person (two single-person clips side by side, 540×960 each). The
+  multi-person pipeline (`--detector yolo`, `DETECT_EVERY=1`) gets both people
+  right on the clean pairs:
+  - `2p_raise_lr` → left `raise_left_hand`, right `raise_right_hand` ✓
+  - `2p_idle_squat` → left `idle`, right `squat` ✓
+  - `2p_sit_laying` → left `sit` ✓, right `laying` intermittent (the lying
+    person, plus track churn on the sitter)
+
+**Bug found + fixed:** `DETECT_EVERY = 2` swapped ByteTrack ids — and therefore
+the per-person labels — between two similar people standing close together
+(`2p_*` clips reproduced it). Default is now `1`.
+
 ## Known items / carry-over
 
 - **Acer benchmark still pending** (Phase 1 open item too). Expect a bit slower

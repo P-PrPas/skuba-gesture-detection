@@ -1,0 +1,17 @@
+clip_id,subject_id,session_id,source_video,class,start_s,end_s,confidence,notes
+idle_01,s01,s01_main,main_actions.mp4,idle,0.00,2.00,high,standing still before first gesture
+raise_right_hand_01,s01,s01_main,main_actions.mp4,raise_right_hand,2.20,5.40,high,person's right arm (viewer-left in frame) raised and held; subject faces camera
+raise_left_hand_01,s01,s01_main,main_actions.mp4,raise_left_hand,5.90,7.40,medium,person's left arm (viewer-right) raised; short hold (~1.5s)
+ok_01,s01,s01_main,main_actions.mp4,ok,13.10,14.60,high,thumb+index circle other three fingers up; right hand near head
+two_finger_01,s01,s01_main,main_actions.mp4,two_finger,16.10,19.00,high,index+middle V (peace); right hand
+i_love_you_01,s01,s01_main,main_actions.mp4,i_love_you,20.50,25.20,medium,index+pinky+thumb all extended (ILY); right hand. ILY vs rock boundary near t=25 approximate
+rock_01,s01,s01_main,main_actions.mp4,rock,25.60,29.00,medium,index+pinky up thumb folded; right hand. verify against i_love_you_01 - handshapes are close on this take
+heart_01,s01,s01_main,main_actions.mp4,heart,31.00,32.00,medium,big two-arm heart arced above the head (1st occurrence). short (~1s)
+mini_heart_01,s01,s01_main,main_actions.mp4,mini_heart,32.00,33.50,medium,"hands together just above the head making a small heart (~t=33, per your note)"
+t_pose_01,s01,s01_main,main_actions.mp4,t_pose,34.50,35.70,medium,arms straight out to the sides horizontal
+heart_02,s01,s01_main,main_actions.mp4,heart,44.70,46.50,medium,big two-arm heart above the head (2nd occurrence). cleaner/longer than heart_01
+glico_pose_01,s01,s01_main,main_actions.mp4,glico_pose,38.00,40.20,medium,"Glico / running-man pose: arms up, knee up. the apparent 'jump' is just a leg switch - confirmed OK"
+squat_01,s01,s01_main,main_actions.mp4,squat,53.60,57.20,medium,deep crouch hands toward floor; lower body partly occluded by the robot
+sit_01,s01,s01_main,main_actions.mp4,sit,61.00,65.60,medium,platform-sit: seated upright on the robot platform feet on floor
+sit_02,s01,s01_main,main_actions.mp4,sit,65.60,71.50,medium,platform-sit (was review_05). trimmed the stand-up at the tail
+laying_03,s02,s02_main3,main_actions.mp4,laying,75.83,78.43,high,"subject on back on the floor, feet toward camera, legs in the open this time. backbone tracks the full body 23/23 frames. cleaner than the main2 take (laying_02, legs beanbag-occluded)"

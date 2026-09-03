@@ -19,7 +19,11 @@ PERSON_DETECTOR = None    # None = MediaPipe's own multi-pose; "yolo" = YOLO11n
                           # non-upright scenes, but adds ~85-130 ms/frame on CPU.
 DETECT_IMGSZ = 512        # YOLO input size (640 best recall, 320 fastest)
 DETECT_CONF = 0.45        # person confidence threshold
-DETECT_EVERY = 2          # run YOLO every K frames, hold boxes between
+DETECT_EVERY = 1          # run YOLO every K frames, hold boxes between. K>1 is
+                          # faster but ByteTrack can swap ids between two similar
+                          # people standing close -> swapped per-person labels
+                          # (verified on the 2p_* test clips). Keep 1 unless the
+                          # scene has one obvious subject.
 DETECT_MIN_AREA_FRAC = 0.025  # ignore boxes smaller than this fraction of the
                               # frame area (drops far bystanders / false hits;
                               # area not height, so a person lying down still counts)

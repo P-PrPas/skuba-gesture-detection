@@ -3,6 +3,7 @@
 !/data/.gitkeep
 # label answer-key — small, text, worth tracking
 !/data/segments.csv
+!/data/segments_main_actions.csv
 
 # models / weights
 *.pt
