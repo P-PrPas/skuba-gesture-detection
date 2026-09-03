@@ -19,10 +19,19 @@ import numpy as np
 from pipeline.runtime import GestureClassifier, TemporalSmoother, vec_from_kp
 
 try:
-    from config import CONF_FLOOR, MAX_CLASSIFY, SMOOTH_WINDOW, TRACK_IOU, TRACK_MAX_MISSED
+    from config import (CONF_FLOOR, MAX_CLASSIFY, SMOOTH_WINDOW,
+                        TRACK_IOU, TRACK_MAX_MISSED)
 except Exception:                                    # sensible fallbacks
     SMOOTH_WINDOW, CONF_FLOOR, MAX_CLASSIFY = 7, 0.20, 0
     TRACK_IOU, TRACK_MAX_MISSED = 0.30, 12
+
+
+def _person_detector_cfg():
+    try:
+        import config
+        return getattr(config, "PERSON_DETECTOR", None)   # read fresh (CLI can override)
+    except Exception:
+        return None
 
 
 def bbox_from_kp(kp, pad=0.08):
@@ -72,6 +81,12 @@ class MultiPerson:
         self.floor = self.clf.floor if floor is None else floor
         self._tracks: list[_Track] = []
         self._next_id = 0
+        self.det = None
+        if _person_detector_cfg() == "yolo":
+            from backbone.detect import PersonDetector
+            self.det = PersonDetector()
+            self._sm: dict[int, TemporalSmoother] = {}   # yolo track id -> smoother
+            self._prev_hn: dict[int, tuple] = {}
 
     def _new_track(self, bbox) -> _Track:
         t = _Track(self._next_id, bbox, TemporalSmoother(self.window, self.floor))
@@ -83,11 +98,62 @@ class MultiPerson:
         self.window = max(1, n)
         for t in self._tracks:
             t.sm.set_window(self.window)
+        for sm in getattr(self, "_sm", {}).values():
+            sm.set_window(self.window)
 
     def reset(self) -> None:
         self._tracks.clear()
+        if self.det is not None:
+            self._sm.clear(); self._prev_hn.clear()
 
     def process(self, frame_bgr, pose, hands, *, detect_hands=True, timings=None):
+        if self.det is not None:
+            return self._process_yolo(frame_bgr, pose, hands, detect_hands, timings)
+        return self._process_mp(frame_bgr, pose, hands, detect_hands, timings)
+
+    # --- YOLO-detect front-end: box+id per person, MediaPipe pose per crop ---
+    def _process_yolo(self, frame_bgr, pose, hands, detect_hands, timings):
+        import time as _t
+
+        h, w = frame_bgr.shape[:2]
+        td = _t.perf_counter()
+        boxes = self.det.detect(frame_bgr)
+        if timings is not None:
+            timings["detect"] = (_t.perf_counter() - td) * 1000.0
+        if MAX_CLASSIFY:
+            boxes = sorted(boxes, key=lambda b: -(b[1][3] - b[1][1]))[:MAX_CLASSIFY]
+
+        results, tp, th = [], 0.0, 0.0
+        alive = set()
+        for tid, (x0, y0, x1, y1) in boxes:
+            bw, bh = x1 - x0, y1 - y0
+            cx0 = max(0, int(x0 - 0.10 * bw)); cy0 = max(0, int(y0 - 0.10 * bh))
+            cx1 = min(w, int(x1 + 0.10 * bw)); cy1 = min(h, int(y1 + 0.10 * bh))
+            t0 = _t.perf_counter()
+            kp = pose.estimate_crop(frame_bgr[cy0:cy1, cx0:cx1])
+            tp += (_t.perf_counter() - t0) * 1000.0
+            if kp is None:
+                continue
+            kp.xy[:, 0] += cx0; kp.xy[:, 1] += cy0          # crop -> frame coords
+            t0 = _t.perf_counter()
+            v, hboxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
+                                       prev_hand_norms=self._prev_hn.get(tid, (None, None)))
+            th += (_t.perf_counter() - t0) * 1000.0
+            if detect_hands:
+                self._prev_hn[tid] = hn
+            sm = self._sm.setdefault(tid, TemporalSmoother(self.window, self.floor))
+            lab, conf, _ = self.clf.predict(v)
+            out = sm.update(lab, conf)
+            results.append(PersonResult(tid, (x0, y0, x1, y1), kp, hboxes, out))
+            alive.add(tid)
+        for tid in list(self._sm):                          # forget vanished tracks
+            if tid not in alive:
+                self._sm.pop(tid, None); self._prev_hn.pop(tid, None)
+        if timings is not None:
+            timings["pose"], timings["hands"] = tp, th
+        return results
+
+    def _process_mp(self, frame_bgr, pose, hands, detect_hands, timings):
         tp = time.perf_counter()
         people = pose.estimate_all(frame_bgr)        # largest-first, already ≤ num_poses
         if timings is not None:
@@ -162,7 +228,7 @@ def demo() -> None:
     mp = MultiPerson.__new__(MultiPerson)
     mp.clf = SimpleNamespace(floor=0.2,
                              predict=lambda v: ("ok" if v.sum() == 0 else "ok", 0.9, None))
-    mp.window, mp.floor, mp._tracks, mp._next_id = 5, 0.2, [], 0
+    mp.window, mp.floor, mp._tracks, mp._next_id, mp.det = 5, 0.2, [], 0, None
     pose, hands = _Pose(), _Hands()
     ids_seen = set()
     for _ in range(8):

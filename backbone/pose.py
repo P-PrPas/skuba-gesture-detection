@@ -99,10 +99,12 @@ class PoseEstimator:
                 min_tracking_confidence=min_confidence,
             )
             self._model = vision.PoseLandmarker.create_from_options(opts)
+            self._img_model = None          # lazily created IMAGE-mode model for crops
             self._ts = 0
             self.edges = _MP_EDGES
             self._lw, self._rw = _MP_LEFT_WRIST, _MP_RIGHT_WRIST
             self._ls, self._rs = _MP_LEFT_SHOULDER, _MP_RIGHT_SHOULDER
+            self._min_conf = min_confidence
         elif backend == "yolo":
             from ultralytics import YOLO
 
@@ -163,3 +165,34 @@ class PoseEstimator:
         """The primary (largest) person, or None. Backward-compatible."""
         people = self.estimate_all(frame_bgr)
         return people[0] if people else None
+
+    def estimate_crop(self, crop_bgr: np.ndarray) -> Keypoints | None:
+        """Run pose on a pre-cropped single person (IMAGE mode, no temporal
+        state). Coords are in crop pixels. For the YOLO-detect front-end."""
+        if self.backend != "mediapipe":
+            raise NotImplementedError("estimate_crop is mediapipe-only")
+        if crop_bgr.size == 0:
+            return None
+        import cv2
+        import mediapipe as mp
+        from mediapipe.tasks.python import BaseOptions, vision
+
+        if self._img_model is None:
+            from .assets import asset_bytes
+            self._img_model = vision.PoseLandmarker.create_from_options(
+                vision.PoseLandmarkerOptions(
+                    base_options=BaseOptions(
+                        model_asset_buffer=asset_bytes("pose_landmarker_lite")),
+                    running_mode=vision.RunningMode.IMAGE, num_poses=1,
+                    min_pose_detection_confidence=self._min_conf,
+                    min_pose_presence_confidence=self._min_conf))
+        h, w = crop_bgr.shape[:2]
+        img = mp.Image(image_format=mp.ImageFormat.SRGB,
+                       data=cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB))
+        res = self._img_model.detect(img)
+        if not res.pose_landmarks:
+            return None
+        lm = res.pose_landmarks[0]
+        xy = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
+        vis = np.array([p.visibility for p in lm], dtype=np.float32)
+        return self._mk(xy, vis)

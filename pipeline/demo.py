@@ -161,8 +161,9 @@ def draw_people(frame, results, fps, tm, n, hand_every):
         cv2.putText(frame, txt, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     _label_col(r.out.label), 2, cv2.LINE_AA)
 
+    det = f"det {tm['detect']:.0f} / " if "detect" in tm else ""
     txt = f"{fps:4.1f} FPS | {tm.get('total', 0):.0f} ms " \
-          f"(pose {tm.get('pose', 0):.0f} / hands {tm.get('hands', 0):.0f}) | {len(results)} ppl"
+          f"({det}pose {tm.get('pose', 0):.0f} / hands {tm.get('hands', 0):.0f}) | {len(results)} ppl"
     cv2.putText(frame, txt, (w - 12 - 8 * len(txt), 26), cv2.FONT_HERSHEY_SIMPLEX,
                 0.5, WHITE, 1, cv2.LINE_AA)
     cv2.putText(frame, f"num_poses={n}  hand-every={hand_every}   q quit  space pause",
@@ -234,8 +235,15 @@ def benchmark(args):
 
 def live(args):
     cap = _open(args)
+    if args.detector:                               # CLI override of config
+        import config as _cfg
+        _cfg.PERSON_DETECTOR = None if args.detector == "mediapipe" else "yolo"
+    try:
+        from config import PERSON_DETECTOR
+    except Exception:
+        PERSON_DETECTOR = None
     pose, hands = PoseEstimator("mediapipe"), HandLandmarker()
-    multi = pose.num_poses > 1 or args.multi
+    multi = pose.num_poses > 1 or args.multi or PERSON_DETECTOR
     clf = GestureClassifier(args.model)
     sm = TemporalSmoother(n=args.window,
                           floor=args.floor if args.floor is not None else clf.floor)
@@ -363,6 +371,8 @@ def main():
                     help="rotate frames CW before processing (if AUTO metadata fails)")
     ap.add_argument("--multi", action="store_true",
                     help="force multi-person mode (auto-on when config.NUM_POSES > 1)")
+    ap.add_argument("--detector", choices=["mediapipe", "yolo"], default=None,
+                    help="person detector: yolo = YOLO11n front-end (overrides config)")
     ap.add_argument("--benchmark", action="store_true")
     ap.add_argument("--frames", type=int, default=200, help="benchmark frame count")
     ap.add_argument("--record", type=str, default=None,

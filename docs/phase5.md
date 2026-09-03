@@ -133,13 +133,38 @@ people. Speed is also marginal — 3.9 FPS median with 2 people; `--hand-every 2
 
 A fixed robot camera with people standing in front of it facing it would be an
 easier case than this handheld take — but the failure modes (non-upright poses,
-occlusion, blur, id churn) are what the robot will hit. If reliable
-multi-person is a hard requirement, the options are: (a) a dedicated
-person-detector front-end (small YOLO-detect ~30 ms CPU) feeding per-crop
-MediaPipe pose — fixes the missed-person problem, keeps the 33-landmark
-features, still linear landmarking cost; or (b) YOLO-pose (native multi-person,
-one pass) — but that needs the GPU and a full feature+classifier retrain
-(COCO-17). Decision for the team; the config toggle is in place to keep testing.
+occlusion, blur, id churn) are what the robot will hit.
+
+### YOLO-detect front-end — `config.PERSON_DETECTOR = "yolo"`
+
+Built as the alternative: YOLO11n **detection** (`backbone/detect.py`, weights
+auto-download, ~5 MB) + ByteTrack IDs finds the person boxes, then MediaPipe
+Pose runs on each crop (`PoseEstimator.estimate_crop()`, IMAGE mode) for the
+33 landmarks — so the feature vector and the trained classifier are unchanged.
+`DETECT_EVERY` amortises the YOLO cost (run every K frames, hold boxes between).
+
+Same `main3.MOV`, `--detector yolo`, `DETECT_EVERY=2`, imgsz 512
+(`results/phase5/demo_main3_yolo.mp4`):
+
+| | MediaPipe multi-pose | **YOLO-detect front-end** |
+|---|---|---|
+| frames with 2 people | 29 % | **63 %** |
+| latency p50 | 257 ms (3.9 FPS) | **159 ms (6.3 FPS)** |
+| track id churn (2 real people) | 10 ids | ~6 |
+
+**Both more reliable and faster** — YOLO's person detector is trained on COCO's
+huge pose/occlusion variety, so it catches the person on the floor that
+BlazePose's upright-biased detector misses, and running it every 2nd frame at a
+small crop size costs less than MediaPipe's own heavier multi-pose model. The
+remaining gap to 100 % is motion blur (YOLO fails there too) and the false 3rd
+"person" (the Pepper mannequin in shot) — tune `DETECT_CONF` / `DETECT_MIN_AREA_FRAC`.
+
+**Recommendation:** if multi-person is required, `PERSON_DETECTOR = "yolo"` is
+the path — it keeps the whole Phase 2–4 investment (33-landmark features,
+locked classifier) and only swaps the "who is in frame" step. A full switch to
+**YOLO-pose** (native multi-person, one pass) is *not* worth it: it needs the
+GPU (contended on the Acer) and COCO-17 keypoints → a full feature + classifier
+retrain. Confirm on real robot-camera footage in Phase 6.
 
 ## Known items / carry-over
 

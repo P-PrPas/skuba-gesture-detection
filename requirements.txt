@@ -3,7 +3,12 @@ mediapipe==1.0.1          # Pose + Hands via the Tasks API; CPU, 0 VRAM. Backbon
 opencv-contrib-python==4.11.0.86   # mediapipe wants -contrib; keep them the same version
 numpy>=1.26,<3            # mediapipe 1.0.1 dropped its numpy<2 pin; 2.x works (tested)
 
+# ultralytics — Phase 1 YOLO-pose comparison AND the optional Phase 5 YOLO11n
+# person-detector front-end (config.PERSON_DETECTOR = "yolo"). yolo11n.pt (~5 MB)
+# auto-downloads to the repo root on first use.
+ultralytics==8.3.55
+lap>=0.5.12               # ByteTrack solver for the YOLO person tracker
+
 # Phase 1 backbone comparison ONLY — not imported by backbone/ or pipeline/
-ultralytics==8.3.55       # YOLO-pose
 rtmlib==0.0.16            # RTMPose (ONNX)
 onnxruntime==1.29.0       # for rtmlib; swap to onnxruntime-gpu via requirements-phase1-gpu.txt for the CUDA benchmark
