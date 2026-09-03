@@ -291,9 +291,12 @@ def benchmark(args):
 
 def live(args):
     cap = _open(args)
-    if args.detector:                               # CLI override of config
+    if args.detector or args.max_classify is not None:   # CLI overrides of config
         import config as _cfg
-        _cfg.PERSON_DETECTOR = None if args.detector == "mediapipe" else "yolo"
+        if args.detector:
+            _cfg.PERSON_DETECTOR = None if args.detector == "mediapipe" else "yolo"
+        if args.max_classify is not None:
+            _cfg.MAX_CLASSIFY = args.max_classify
     try:
         from config import PERSON_DETECTOR
     except Exception:
@@ -443,7 +446,10 @@ def main():
                          "overlay + window are consistent across cameras")
     ap.add_argument("--poses", type=int, default=None,
                     help="max people to track this run (overrides config.NUM_POSES; "
-                         "1 = single-person, fastest)")
+                         "1 = single-person, fastest). A ceiling, not a fixed count.")
+    ap.add_argument("--max-classify", type=int, default=None, dest="max_classify",
+                    help="classify only the N largest (closest) detected people; "
+                         "0 = everyone (overrides config.MAX_CLASSIFY)")
     ap.add_argument("--multi", action="store_true",
                     help="force multi-person mode (auto-on when config.NUM_POSES > 1)")
     ap.add_argument("--detector", choices=["mediapipe", "yolo"], default=None,

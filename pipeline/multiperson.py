@@ -19,19 +19,18 @@ import numpy as np
 from pipeline.runtime import GestureClassifier, TemporalSmoother, vec_from_kp
 
 try:
-    from config import (CONF_FLOOR, MAX_CLASSIFY, SMOOTH_WINDOW,
-                        TRACK_IOU, TRACK_MAX_MISSED)
+    from config import CONF_FLOOR, SMOOTH_WINDOW, TRACK_IOU, TRACK_MAX_MISSED
 except Exception:                                    # sensible fallbacks
-    SMOOTH_WINDOW, CONF_FLOOR, MAX_CLASSIFY = 7, 0.20, 0
+    SMOOTH_WINDOW, CONF_FLOOR = 7, 0.20
     TRACK_IOU, TRACK_MAX_MISSED = 0.30, 12
 
 
-def _person_detector_cfg():
+def _cfg(name, default):
     try:
         import config
-        return getattr(config, "PERSON_DETECTOR", None)   # read fresh (CLI can override)
+        return getattr(config, name, default)        # read fresh (CLI can override)
     except Exception:
-        return None
+        return default
 
 
 def bbox_from_kp(kp, pad=0.08):
@@ -83,7 +82,7 @@ class MultiPerson:
         self._tracks: list[_Track] = []
         self._next_id = 0
         self.det = None
-        if _person_detector_cfg() == "yolo":
+        if _cfg("PERSON_DETECTOR", None) == "yolo":
             from backbone.detect import PersonDetector
             self.det = PersonDetector()
             self._sm: dict[int, TemporalSmoother] = {}   # yolo track id -> smoother
@@ -121,8 +120,9 @@ class MultiPerson:
         boxes = self.det.detect(frame_bgr)
         if timings is not None:
             timings["detect"] = (_t.perf_counter() - td) * 1000.0
-        if MAX_CLASSIFY:
-            boxes = sorted(boxes, key=lambda b: -(b[1][3] - b[1][1]))[:MAX_CLASSIFY]
+        mc = _cfg("MAX_CLASSIFY", 0)
+        if mc:
+            boxes = sorted(boxes, key=lambda b: -(b[1][3] - b[1][1]))[:mc]
 
         results, tp, th = [], 0.0, 0.0
         alive = set()
@@ -171,8 +171,9 @@ class MultiPerson:
         people = pose.estimate_all(frame_bgr)        # largest-first, already ≤ num_poses
         if timings is not None:
             timings["pose"] = (time.perf_counter() - tp) * 1000.0
-        if MAX_CLASSIFY:
-            people = people[:MAX_CLASSIFY]
+        mc = _cfg("MAX_CLASSIFY", 0)
+        if mc:
+            people = people[:mc]
         dets = [(kp, bbox_from_kp(kp)) for kp in people]
 
         # greedy IoU association: best pairs first
