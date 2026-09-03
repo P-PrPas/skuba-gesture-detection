@@ -2,11 +2,13 @@
 with a live OpenCV GUI (skeleton overlay, gesture label, confidence bar, the
 smoothing window, and an FPS/latency readout).
 
-    python -m pipeline.demo                       # webcam 0
+    python -m pipeline.demo --poses 1             # webcam, single person (fastest)
+    python -m pipeline.demo --poses 3             # webcam, up to 3 people (MediaPipe)
+    python -m pipeline.demo --detector yolo       # webcam, YOLO person-detect front-end
     python -m pipeline.demo --video clip.mp4      # a video file, looped
     python -m pipeline.demo --benchmark           # headless latency/FPS report
     python -m pipeline.demo --video x.MOV --record out.mp4 --labels data/segments.csv
-    python -m pipeline.demo --window 7 --hand-every 2 --floor 0.45 --model mlp
+    python -m pipeline.demo --camera 1 --window 7 --hand-every 2 --floor 0.45
 
 `--floor T`: below window-confidence T the smoother emits "unknown" (orange in
 the GUI) — distinct from a *confident* "idle" (gray). `--labels segments.csv`
@@ -242,7 +244,8 @@ def live(args):
         from config import PERSON_DETECTOR
     except Exception:
         PERSON_DETECTOR = None
-    pose, hands = PoseEstimator("mediapipe"), HandLandmarker()
+    pose = PoseEstimator("mediapipe", num_poses=args.poses)   # None -> config.NUM_POSES
+    hands = HandLandmarker()
     multi = pose.num_poses > 1 or args.multi or PERSON_DETECTOR
     clf = GestureClassifier(args.model)
     sm = TemporalSmoother(n=args.window,
@@ -369,6 +372,9 @@ def main():
     ap.add_argument("--no-mirror", action="store_false", dest="mirror")
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                     help="rotate frames CW before processing (if AUTO metadata fails)")
+    ap.add_argument("--poses", type=int, default=None,
+                    help="max people to track this run (overrides config.NUM_POSES; "
+                         "1 = single-person, fastest)")
     ap.add_argument("--multi", action="store_true",
                     help="force multi-person mode (auto-on when config.NUM_POSES > 1)")
     ap.add_argument("--detector", choices=["mediapipe", "yolo"], default=None,
