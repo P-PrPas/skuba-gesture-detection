@@ -225,6 +225,10 @@ def benchmark(args):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
             frame = _rot(frame, args.rotate)
+            fh, fw = frame.shape[:2]
+            if fw != args.display_width:        # match the live path
+                frame = cv2.resize(frame, (args.display_width,
+                                           round(fh * args.display_width / fw)))
             if warm < 10:                       # let XNNPACK / caches settle
                 frame_to_vec(frame, pose, hands, detect_hands=(i % he == 0),
                              prev_hand_norms=prev)
@@ -292,8 +296,7 @@ def live(args):
     if args.record:
         Path(args.record).parent.mkdir(parents=True, exist_ok=True)
     else:
-        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
-        cv2.resizeWindow(win, 720, 1000)
+        cv2.namedWindow(win, cv2.WINDOW_NORMAL)   # resizable; sized to frame 0 below
         cv2.moveWindow(win, 60, 40)
     print("demo running" + (f" -> {args.record}" if args.record else
                             " — the window should be open; click it, press q to quit"))
@@ -311,6 +314,15 @@ def live(args):
             frame = _rot(frame, args.rotate)
             if args.mirror and not args.video:
                 frame = cv2.flip(frame, 1)
+            # normalise to a standard width so the overlay (tuned for ~1080-wide
+            # portrait clips) stays the right size on any webcam, and the window
+            # matches the frame's aspect. pose runs on this frame.
+            fh, fw = frame.shape[:2]
+            if fw != args.display_width:
+                frame = cv2.resize(frame, (args.display_width,
+                                           round(fh * args.display_width / fw)))
+            if not args.record and i == 0:
+                cv2.resizeWindow(win, frame.shape[1], frame.shape[0])
             if args.record and writer is None:   # size from the real (rotated) frame
                 hh, ww = frame.shape[:2]
                 for cc in ("avc1", "mp4v"):
@@ -400,6 +412,9 @@ def main():
     ap.add_argument("--no-mirror", action="store_false", dest="mirror")
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                     help="rotate frames CW before processing (if AUTO metadata fails)")
+    ap.add_argument("--display-width", type=int, default=960, dest="display_width",
+                    help="resize every frame to this width (keeps aspect) so the "
+                         "overlay + window are consistent across cameras")
     ap.add_argument("--poses", type=int, default=None,
                     help="max people to track this run (overrides config.NUM_POSES; "
                          "1 = single-person, fastest)")
