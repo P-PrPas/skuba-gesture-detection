@@ -31,29 +31,30 @@ MODELS = ROOT / "classifier" / "models"
 
 def frame_to_vec(frame_bgr, pose, hands, *, detect_hands=True,
                  prev_hand_norms=(None, None), timings=None):
-    """→ (vec152, kp, [lh_box, rh_box], (lh_norm, rh_norm)).
-    vec152 is None (and kp None) when no body is found. `detect_hands=False`
-    reuses `prev_hand_norms` (for --hand-every skip-frame). `timings` dict, if
-    given, gets "pose"/"hands" wall-ms."""
+    """→ (vec152, kp, [lh_box, rh_box], (lh_norm, rh_norm), (lh_lm_xy, rh_lm_xy)).
+    vec152/kp are None when no body is found. `*_lm_xy` are the raw 21-point hand
+    landmarks in FRAME pixels (or None) — for drawing only. `detect_hands=False`
+    reuses `prev_hand_norms`. `timings` dict, if given, gets "pose"/"hands" ms."""
     t0 = time.perf_counter()
     kp = pose.estimate(frame_bgr)
     if timings is not None:
         timings["pose"] = (time.perf_counter() - t0) * 1000.0
     if kp is None:
-        return None, None, None, (None, None)
-    v, boxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
-                               prev_hand_norms=prev_hand_norms, timings=timings)
-    return v, kp, boxes, hn
+        return None, None, None, (None, None), (None, None)
+    v, boxes, hn, lm = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
+                                  prev_hand_norms=prev_hand_norms, timings=timings)
+    return v, kp, boxes, hn, lm
 
 
 def vec_from_kp(frame_bgr, kp, hands, *, detect_hands=True,
                 prev_hand_norms=(None, None), timings=None):
-    """One person's Keypoints → (vec152, [lh_box, rh_box], (lh_norm, rh_norm)).
-    The per-person half of the pipeline — `frame_to_vec` (single) and the
+    """One person's Keypoints → (vec152, [lh_box, rh_box], (lh_norm, rh_norm),
+    (lh_lm_xy, rh_lm_xy)). `*_lm_xy` = raw 21-point hand landmarks in FRAME
+    pixels (or None), for overlay only. `frame_to_vec` (single) and the
     multi-person path both call this."""
     body_norm = normalize_body(kp.xy)
     scale = kp.shoulder_width or 80.0
-    boxes, hand_norms = [], []
+    boxes, hand_norms, hand_lms = [], [], []
     th = time.perf_counter()
     for i, wrist in enumerate((kp.left_wrist, kp.right_wrist)):
         box = wrist_crop_box(wrist, scale, frame_bgr.shape)
@@ -62,13 +63,15 @@ def vec_from_kp(frame_bgr, kp, hands, *, detect_hands=True,
             x0, y0, x1, y1 = box
             lm = hands.detect(frame_bgr[y0:y1, x0:x1])
             hand_norms.append(normalize_hand(lm) if lm is not None else None)
+            hand_lms.append(lm + np.array([x0, y0], np.float32) if lm is not None else None)
         else:
             hand_norms.append(prev_hand_norms[i])
+            hand_lms.append(None)
     if timings is not None:
         timings["hands"] = timings.get("hands", 0.0) + (time.perf_counter() - th) * 1000.0
 
     v = fuse(body_norm, hand_norms[0], hand_norms[1])
-    return v, boxes, tuple(hand_norms)
+    return v, boxes, tuple(hand_norms), tuple(hand_lms)
 
 
 class GestureClassifier:

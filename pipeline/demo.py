@@ -51,6 +51,22 @@ _EDGES = [
     (11, 12), (11, 13), (13, 15), (12, 14), (14, 16), (11, 23), (12, 24), (23, 24),
     (23, 25), (25, 27), (27, 29), (27, 31), (24, 26), (26, 28), (28, 30), (28, 32),
     (0, 2), (0, 5), (9, 10)]
+# MediaPipe Hands 21-point skeleton (thumb, index, middle, ring, pinky + palm)
+_HAND_EDGES = [
+    (0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8), (5, 9),
+    (9, 10), (10, 11), (11, 12), (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (17, 18), (18, 19), (19, 20), (0, 17)]
+
+
+def _draw_hands(frame, hand_lms, colour=(255, 0, 255)):
+    for lm in hand_lms or ():
+        if lm is None:
+            continue
+        pts = np.asarray(lm).astype(int)
+        for i, j in _HAND_EDGES:
+            cv2.line(frame, tuple(pts[i]), tuple(pts[j]), colour, 1, cv2.LINE_AA)
+        for p in pts:
+            cv2.circle(frame, tuple(p), 2, (255, 255, 255), -1, cv2.LINE_AA)
 
 
 def _panel(img, x, y, w, h, alpha=0.55):
@@ -76,7 +92,7 @@ def _truth_at(rows, t):
     return None
 
 
-def draw(frame, kp, boxes, out, fps, tm, n, hand_every, gt=None):
+def draw(frame, kp, boxes, out, fps, tm, n, hand_every, gt=None, hand_lms=None):
     h, w = frame.shape[:2]
     if kp is not None:
         for i, j in _EDGES:
@@ -84,6 +100,7 @@ def draw(frame, kp, boxes, out, fps, tm, n, hand_every, gt=None):
             cv2.line(frame, tuple(pi), tuple(pj), GREEN, 2, cv2.LINE_AA)
         for p in kp.xy.astype(int):
             cv2.circle(frame, tuple(p), 3, (255, 255, 255), -1, cv2.LINE_AA)
+    _draw_hands(frame, hand_lms)
     for b, lbl in zip(boxes or [], ("L", "R")):
         x0, y0, x1, y1 = b
         cv2.rectangle(frame, (x0, y0), (x1, y1), CYAN, 1)
@@ -150,6 +167,7 @@ def draw_people(frame, results, fps, tm, n, hand_every):
         for i, j in _EDGES:
             cv2.line(frame, tuple(r.kp.xy[i].astype(int)), tuple(r.kp.xy[j].astype(int)),
                      sk, 2, cv2.LINE_AA)
+        _draw_hands(frame, getattr(r, "hand_lms", None), colour=sk)
         x0, y0, x1, y1 = (int(v) for v in r.bbox)
         cv2.rectangle(frame, (x0, y0), (x1, y1), sk, 1)
         for b in r.boxes:
@@ -236,8 +254,8 @@ def benchmark(args):
                 i += 1
                 continue
             tmg, t0 = {}, time.perf_counter()
-            v, _, _, hn = frame_to_vec(frame, pose, hands, timings=tmg,
-                                       detect_hands=(i % he == 0), prev_hand_norms=prev)
+            v, _, _, hn, _ = frame_to_vec(frame, pose, hands, timings=tmg,
+                                          detect_hands=(i % he == 0), prev_hand_norms=prev)
             if i % he == 0:
                 prev = hn
             if v is not None:
@@ -337,7 +355,7 @@ def live(args):
                 results = mp.process(frame, pose, hands, detect_hands=did_hands,
                                      timings=tmg)
             else:
-                v, kp, boxes, hn = frame_to_vec(
+                v, kp, boxes, hn, hlm = frame_to_vec(
                     frame, pose, hands, timings=tmg,
                     detect_hands=did_hands, prev_hand_norms=prev_hn)
                 if did_hands:
@@ -345,7 +363,7 @@ def live(args):
                 if v is not None:
                     lab, conf, _ = clf.predict(v)
                 else:
-                    lab, conf, kp, boxes = "idle", 0.0, None, None
+                    lab, conf, kp, boxes, hlm = "idle", 0.0, None, None, (None, None)
                 out = sm.update(lab, conf)
             tmg["total"] = (time.perf_counter() - t0) * 1000
             ft.append(time.perf_counter())
@@ -362,7 +380,7 @@ def live(args):
                 if g in CLASSES:
                     tot_gt += 1
                     hits += int(g == out.label)
-            draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every, gt=gt)
+            draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every, gt=gt, hand_lms=hlm)
 
         if writer:
             writer.write(frame)

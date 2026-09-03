@@ -71,6 +71,7 @@ class PersonResult:
     kp: object
     boxes: list
     out: object                                     # runtime.SmoothOut
+    hand_lms: tuple = (None, None)                   # (21,2) frame-pixel, for overlay
 
 
 class MultiPerson:
@@ -147,15 +148,16 @@ class MultiPerson:
             if sh_hip < 0.06 * max(bw, bh) or (kp.visibility > 0.5).sum() < 12:
                 continue
             t0 = _t.perf_counter()
-            v, hboxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
-                                       prev_hand_norms=self._prev_hn.get(tid, (None, None)))
+            v, hboxes, hn, hlm = vec_from_kp(
+                frame_bgr, kp, hands, detect_hands=detect_hands,
+                prev_hand_norms=self._prev_hn.get(tid, (None, None)))
             th += (_t.perf_counter() - t0) * 1000.0
             if detect_hands:
                 self._prev_hn[tid] = hn
             sm = self._sm.setdefault(tid, TemporalSmoother(self.window, self.floor))
             lab, conf, _ = self.clf.predict(v)
             out = sm.update(lab, conf)
-            results.append(PersonResult(tid, (x0, y0, x1, y1), kp, hboxes, out))
+            results.append(PersonResult(tid, (x0, y0, x1, y1), kp, hboxes, out, hlm))
             alive.add(tid)
         for tid in list(self._sm):                          # forget vanished tracks
             if tid not in alive:
@@ -189,13 +191,13 @@ class MultiPerson:
         for di, (kp, bbox) in enumerate(dets):
             trk = matched.get(di) or self._new_track(bbox)
             trk.bbox, trk.missed = bbox, 0
-            v, boxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
-                                       prev_hand_norms=trk.prev_hn)
+            v, boxes, hn, hlm = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
+                                           prev_hand_norms=trk.prev_hn)
             if detect_hands:
                 trk.prev_hn = hn
             lab, conf, _ = self.clf.predict(v)
             trk.out = trk.sm.update(lab, conf)
-            results.append(PersonResult(trk.id, bbox, kp, boxes, trk.out))
+            results.append(PersonResult(trk.id, bbox, kp, boxes, trk.out, hlm))
         if timings is not None:
             timings["hands"] = (time.perf_counter() - th) * 1000.0
 

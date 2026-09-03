@@ -53,7 +53,7 @@ def extract_clip(row: dict, pose: PoseEstimator, hands: HandLandmarker) -> dict 
         if not ok:
             break
         fi += 1
-        v, kp, _, _ = frame_to_vec(frame, pose, hands)  # shared with pipeline.demo
+        v, kp, _, _, _ = frame_to_vec(frame, pose, hands)  # shared with pipeline.demo
         if v is None:
             no_body += 1
             continue
