@@ -94,6 +94,53 @@ Gotcha found + fixed: raw `.MOV` files carry a rotation flag that
 has a `--rotate` fallback). The pre-cut `data/clips/*.mp4` are already upright
 (ffmpeg baked it in), so `extract_features.py` was never affected.
 
+## Multi-person
+
+`config.NUM_POSES` (repo-root `config.py`) is the knob — `1` = the original
+single-person path, `> 1` = multi-person. `backbone/pose.py` reads it as the
+default; `estimate_all()` returns every detected person (largest bbox first,
+capped at `NUM_POSES`), `estimate()` still returns the primary one.
+`extract_features.py` + the Phase 1 benchmark pin `num_poses=1` regardless.
+
+`pipeline/multiperson.py` — `MultiPerson.process()` fans the frame out per
+person and runs a light IoU tracker (`config.TRACK_IOU` / `TRACK_MAX_MISSED`) so
+each person keeps their own `TemporalSmoother` window across frames. The demo
+switches to per-person labels (anchored above each person, colour-keyed by
+track id) automatically when `NUM_POSES > 1`, or with `--multi`.
+
+**MediaPipe multi-pose is a config change, not a backbone swap** — but the
+per-person landmarking + hand crops mean latency grows ~linearly with the
+person count. `config.MAX_CLASSIFY` (N > 0) caps it to the N largest people.
+
+### Test — `num_poses=2` on `data/main3.MOV` (`results/phase5/demo_main3_multi.mp4`)
+
+Two people present most of the 13.5 s clip (one on the floor, one standing),
+handheld camera, cluttered room. `MultiPerson` + N=7 + floor 0.45:
+
+| metric | value |
+|---|---|
+| frames with **2 people** detected | **118 / 404 (29 %)** |
+| frames with 1 | 260 (64 %) · with 0 | 26 (6 %) |
+| latency p50 (2 people, hands every frame) | **257 ms → 3.9 FPS** (p90 364, p99 438) |
+| distinct track ids over the clip | **10** (for 2 real people — heavy churn) |
+
+**MediaPipe multi-pose is a real weak spot here.** It catches both people only
+~a third of the time, prefers the upright person over the larger person lying
+on the floor (BlazePose is trained on upright bodies — same reason `laying` was
+a Phase 1 concern), drops out under motion blur, and the tracker keeps losing
+people. Speed is also marginal — 3.9 FPS median with 2 people; `--hand-every 2`
++ `MAX_CLASSIFY=2` claws back to ~6–8 but the detection rate does not improve.
+
+A fixed robot camera with people standing in front of it facing it would be an
+easier case than this handheld take — but the failure modes (non-upright poses,
+occlusion, blur, id churn) are what the robot will hit. If reliable
+multi-person is a hard requirement, the options are: (a) a dedicated
+person-detector front-end (small YOLO-detect ~30 ms CPU) feeding per-crop
+MediaPipe pose — fixes the missed-person problem, keeps the 33-landmark
+features, still linear landmarking cost; or (b) YOLO-pose (native multi-person,
+one pass) — but that needs the GPU and a full feature+classifier retrain
+(COCO-17). Decision for the team; the config toggle is in place to keep testing.
+
 ## Known items / carry-over
 
 - **Acer benchmark still pending** (Phase 1 open item too). Expect a bit slower

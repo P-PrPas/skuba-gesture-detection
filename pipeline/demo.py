@@ -35,6 +35,7 @@ import numpy as np
 from backbone.hands import HandLandmarker
 from backbone.pose import PoseEstimator
 from features.schema import CLASSES
+from pipeline.multiperson import MultiPerson
 from pipeline.runtime import GestureClassifier, TemporalSmoother, frame_to_vec
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -132,6 +133,42 @@ def draw(frame, kp, boxes, out, fps, tm, n, hand_every, gt=None):
                 1, cv2.LINE_AA)
 
 
+_ID_COLORS = [(90, 220, 90), (230, 170, 60), (200, 120, 230), (80, 200, 230),
+              (120, 120, 240), (240, 220, 90)]
+
+
+def _label_col(label):
+    return {"unknown": ORANGE, "idle": GRAY}.get(label, GREEN)
+
+
+def draw_people(frame, results, fps, tm, n, hand_every):
+    h, w = frame.shape[:2]
+    for r in results:
+        sk = _ID_COLORS[r.id % len(_ID_COLORS)]
+        for i, j in _EDGES:
+            cv2.line(frame, tuple(r.kp.xy[i].astype(int)), tuple(r.kp.xy[j].astype(int)),
+                     sk, 2, cv2.LINE_AA)
+        x0, y0, x1, y1 = (int(v) for v in r.bbox)
+        cv2.rectangle(frame, (x0, y0), (x1, y1), sk, 1)
+        for b in r.boxes:
+            cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), CYAN, 1)
+        # label chip anchored just above the person's box (below if near the top)
+        txt = f"P{r.id}  {r.out.label.upper()}  {r.out.confidence:.2f}"
+        tw = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][0]
+        cy = y0 - 10 if y0 > 40 else y1 + 28
+        cx = min(max(x0, 4), w - tw - 12)
+        _panel(frame, cx - 4, cy - 22, tw + 12, 30)
+        cv2.putText(frame, txt, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
+                    _label_col(r.out.label), 2, cv2.LINE_AA)
+
+    txt = f"{fps:4.1f} FPS | {tm.get('total', 0):.0f} ms " \
+          f"(pose {tm.get('pose', 0):.0f} / hands {tm.get('hands', 0):.0f}) | {len(results)} ppl"
+    cv2.putText(frame, txt, (w - 12 - 8 * len(txt), 26), cv2.FONT_HERSHEY_SIMPLEX,
+                0.5, WHITE, 1, cv2.LINE_AA)
+    cv2.putText(frame, f"num_poses={n}  hand-every={hand_every}   q quit  space pause",
+                (12, h - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1, cv2.LINE_AA)
+
+
 def _open(args):
     src = args.video if args.video else args.camera
     cap = cv2.VideoCapture(src)
@@ -198,9 +235,11 @@ def benchmark(args):
 def live(args):
     cap = _open(args)
     pose, hands = PoseEstimator("mediapipe"), HandLandmarker()
+    multi = pose.num_poses > 1 or args.multi
     clf = GestureClassifier(args.model)
     sm = TemporalSmoother(n=args.window,
                           floor=args.floor if args.floor is not None else clf.floor)
+    mp = MultiPerson(args.model, window=args.window, floor=args.floor) if multi else None
     hand_every = max(1, args.hand_every)
     prev_hn = (None, None)
     ft = deque(maxlen=30)
@@ -243,30 +282,36 @@ def live(args):
 
             tmg, t0 = {}, time.perf_counter()
             did_hands = i % hand_every == 0
-            v, kp, boxes, hn = frame_to_vec(
-                frame, pose, hands, timings=tmg,
-                detect_hands=did_hands, prev_hand_norms=prev_hn)
-            if did_hands:
-                prev_hn = hn
-            if v is not None:
-                lab, conf, _ = clf.predict(v)
+            if multi:
+                results = mp.process(frame, pose, hands, detect_hands=did_hands,
+                                     timings=tmg)
             else:
-                lab, conf, kp, boxes = "idle", 0.0, None, None
-            out = sm.update(lab, conf)
+                v, kp, boxes, hn = frame_to_vec(
+                    frame, pose, hands, timings=tmg,
+                    detect_hands=did_hands, prev_hand_norms=prev_hn)
+                if did_hands:
+                    prev_hn = hn
+                if v is not None:
+                    lab, conf, _ = clf.predict(v)
+                else:
+                    lab, conf, kp, boxes = "idle", 0.0, None, None
+                out = sm.update(lab, conf)
             tmg["total"] = (time.perf_counter() - t0) * 1000
             ft.append(time.perf_counter())
             i += 1
 
-        gt = None
-        if truth is not None:
-            g = _truth_at(truth, i / src_fps)
-            gt = (g, g == out.label)
-            if g in CLASSES:                     # skip cut classes (not in vocab)
-                tot_gt += 1
-                hits += int(g == out.label)
-
         fps = (len(ft) - 1) / (ft[-1] - ft[0]) if len(ft) > 1 else 0.0
-        draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every, gt=gt)
+        if multi:
+            draw_people(frame, results, fps, tmg, pose.num_poses, hand_every)
+        else:
+            gt = None
+            if truth is not None:
+                g = _truth_at(truth, i / src_fps)
+                gt = (g, g == out.label)
+                if g in CLASSES:
+                    tot_gt += 1
+                    hits += int(g == out.label)
+            draw(frame, kp, boxes, out, fps, tmg, sm.n, hand_every, gt=gt)
 
         if writer:
             writer.write(frame)
@@ -279,13 +324,13 @@ def live(args):
         elif k == ord(" "):
             paused = not paused
         elif k == ord("["):
-            sm.set_window(sm.n - 1)
+            (mp or sm).set_window((mp.window if mp else sm.n) - 1)
         elif k == ord("]"):
-            sm.set_window(sm.n + 1)
+            (mp or sm).set_window((mp.window if mp else sm.n) + 1)
         elif k == ord("h"):
             hand_every = hand_every % 3 + 1
         elif k == ord("r"):
-            sm.reset()
+            (mp or sm).reset()
         elif k == ord("s"):
             fn = SHOTS / f"demo_{time.strftime('%H%M%S')}.png"
             cv2.imwrite(str(fn), frame)
@@ -316,6 +361,8 @@ def main():
     ap.add_argument("--no-mirror", action="store_false", dest="mirror")
     ap.add_argument("--rotate", type=int, default=0, choices=[0, 90, 180, 270],
                     help="rotate frames CW before processing (if AUTO metadata fails)")
+    ap.add_argument("--multi", action="store_true",
+                    help="force multi-person mode (auto-on when config.NUM_POSES > 1)")
     ap.add_argument("--benchmark", action="store_true")
     ap.add_argument("--frames", type=int, default=200, help="benchmark frame count")
     ap.add_argument("--record", type=str, default=None,

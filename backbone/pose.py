@@ -6,13 +6,18 @@ See docs/phase1_report.md for the benchmark. The `yolo` backend is kept only
 for the Phase 1 comparison in scripts/phase1_eval.py.
 
 Interface (stable — the rest of the pipeline depends on it):
-    est = PoseEstimator()                  # backend="mediapipe" by default
+    est = PoseEstimator()                  # backend="mediapipe", num_poses from config
     est.new_sequence()                     # call before each independent clip
-    kp  = est.estimate(frame_bgr)          # -> Keypoints or None if no person
+    kp  = est.estimate(frame_bgr)          # -> the primary person, or None
+    kps = est.estimate_all(frame_bgr)      # -> list[Keypoints], largest first (multi-person)
     kp.xy            (33, 2) float pixel coords
     kp.visibility    (33,)  float 0..1
     kp.left_wrist / kp.right_wrist / kp.shoulder_width
     est.edges        list[(i, j)] for drawing the skeleton
+
+Call ONE of estimate / estimate_all per frame — both advance the VIDEO timestamp.
+`num_poses` defaults to `config.NUM_POSES`; pass `num_poses=1` to pin single-person
+(training extraction + the Phase 1 benchmark do this).
 """
 
 from __future__ import annotations
@@ -70,8 +75,16 @@ _FRAME_DT_MS = 33  # nominal; VIDEO mode only needs monotonic-increasing timesta
 
 
 class PoseEstimator:
-    def __init__(self, backend: str = "mediapipe", min_confidence: float = 0.5):
+    def __init__(self, backend: str = "mediapipe", min_confidence: float = 0.5,
+                 num_poses: int | None = None):
         self.backend = backend
+        if num_poses is None:
+            try:
+                from config import NUM_POSES
+                num_poses = NUM_POSES
+            except Exception:
+                num_poses = 1
+        self.num_poses = max(1, int(num_poses))
         if backend == "mediapipe":
             from mediapipe.tasks.python import BaseOptions, vision
 
@@ -80,7 +93,7 @@ class PoseEstimator:
             opts = vision.PoseLandmarkerOptions(
                 base_options=BaseOptions(model_asset_buffer=asset_bytes("pose_landmarker_lite")),
                 running_mode=vision.RunningMode.VIDEO,
-                num_poses=1,
+                num_poses=self.num_poses,
                 min_pose_detection_confidence=min_confidence,
                 min_pose_presence_confidence=min_confidence,
                 min_tracking_confidence=min_confidence,
@@ -108,8 +121,18 @@ class PoseEstimator:
         if self.backend == "mediapipe":
             self._ts += 10 * _FRAME_DT_MS
 
-    def estimate(self, frame_bgr: np.ndarray) -> Keypoints | None:
+    def _mk(self, xy, vis) -> Keypoints:
+        return Keypoints(xy, vis, self._lw, self._rw, self._ls, self._rs)
+
+    def _area(self, kp: Keypoints) -> float:
+        v = kp.xy
+        return float((v[:, 0].max() - v[:, 0].min()) * (v[:, 1].max() - v[:, 1].min()))
+
+    def estimate_all(self, frame_bgr: np.ndarray) -> list[Keypoints]:
+        """All detected people, largest bbox (≈ closest) first. Advances the
+        VIDEO timestamp — call this OR estimate(), once per frame."""
         h, w = frame_bgr.shape[:2]
+        people: list[Keypoints] = []
         if self.backend == "mediapipe":
             import cv2
             import mediapipe as mp
@@ -118,22 +141,25 @@ class PoseEstimator:
                            data=cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB))
             self._ts += _FRAME_DT_MS
             res = self._model.detect_for_video(img, self._ts)
-            if not res.pose_landmarks:
-                return None
-            lm = res.pose_landmarks[0]
-            xy = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
-            vis = np.array([p.visibility for p in lm], dtype=np.float32)
-        else:  # yolo
+            for lm in res.pose_landmarks:
+                xy = np.array([[p.x * w, p.y * h] for p in lm], dtype=np.float32)
+                vis = np.array([p.visibility for p in lm], dtype=np.float32)
+                people.append(self._mk(xy, vis))
+        else:  # yolo — natively multi-person
             res = self._model(frame_bgr, conf=self._conf, verbose=False)[0]
             kpts = res.keypoints
-            if kpts is None or kpts.xy is None or kpts.xy.shape[0] == 0:
-                return None
-            xy = kpts.xy[0].cpu().numpy().astype(np.float32)
-            if xy.shape[0] == 0:
-                return None
-            vis = (
-                kpts.conf[0].cpu().numpy().astype(np.float32)
-                if kpts.conf is not None
-                else np.ones(len(xy), dtype=np.float32)
-            )
-        return Keypoints(xy, vis, self._lw, self._rw, self._ls, self._rs)
+            if kpts is not None and kpts.xy is not None:
+                confs = (kpts.conf.cpu().numpy() if kpts.conf is not None else None)
+                for i, xy in enumerate(kpts.xy.cpu().numpy().astype(np.float32)):
+                    if xy.shape[0] == 0:
+                        continue
+                    vis = (confs[i].astype(np.float32) if confs is not None
+                           else np.ones(len(xy), dtype=np.float32))
+                    people.append(self._mk(xy, vis))
+        people.sort(key=self._area, reverse=True)
+        return people[: self.num_poses]
+
+    def estimate(self, frame_bgr: np.ndarray) -> Keypoints | None:
+        """The primary (largest) person, or None. Backward-compatible."""
+        people = self.estimate_all(frame_bgr)
+        return people[0] if people else None

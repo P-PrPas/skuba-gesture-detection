@@ -311,7 +311,7 @@ def eval_hands(device, annotate):
     from backbone.hands import HandLandmarker, wrist_crop_box
     from backbone.pose import PoseEstimator
     from smoke_test import HAND_EDGES
-    pose = PoseEstimator("mediapipe")
+    pose = PoseEstimator("mediapipe", num_poses=1)
     hands = HandLandmarker()
     res = {}
     for cls, path in HAND_CLIPS.items():
@@ -342,7 +342,7 @@ def eval_hands(device, annotate):
 def eval_combined(device):
     from backbone.hands import HandLandmarker, wrist_crop_box
     from backbone.pose import PoseEstimator
-    pose = PoseEstimator("mediapipe")
+    pose = PoseEstimator("mediapipe", num_poses=1)
     hands = HandLandmarker()
     frames = read_all(COMBINED_CLIP)
 

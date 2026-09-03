@@ -5,6 +5,7 @@ Companion to CLAUDE.md. This is where the concrete schemas and formulas live so 
 ## Tech stack (Phase 1 — backbone locked)
 
 - **Body pose:** MediaPipe `pose_landmarker` (Tasks API, **lite** model, VIDEO mode), 33-landmark BlazePose topology. `backbone/pose.py`. ~25–38 ms/frame CPU, 0 VRAM. Call `PoseEstimator.new_sequence()` before each independent clip so VIDEO-mode tracking does not leak across clips.
+  - **Multi-person:** set `config.NUM_POSES > 1` — MediaPipe's own multi-pose, a config change not a backbone swap. `estimate_all()` returns every person (largest first); the live pipeline (`pipeline/multiperson.py`) fans out per person + an IoU tracker keeps a smoothing window each. Cost grows ~linearly with the person count on CPU; `config.MAX_CLASSIFY` caps it. Training extraction stays `num_poses=1`. Switching to a natively-multi-person backbone (YOLO-pose) is *not* worth it: it needs the GPU (contended on the Acer), gives COCO-17 not 33 landmarks (full feature + classifier retrain), and had flyaway-keypoint bugs in Phase 1.
 - **Hand landmarks:** MediaPipe `hand_landmarker` (Tasks API, IMAGE mode), 21 landmarks/hand, on wrist-anchored crops. `backbone/hands.py`. ~40 ms/crop.
 - **`mediapipe==1.0.1`.** `mp.solutions` (the legacy API) was removed in 1.0 — code uses `mediapipe.tasks.python.vision`. `.task` files auto-download to `backbone/models/` via `backbone/assets.py`.
 - Not fully signed off: no clean `laying` clip yet; combined FPS unconfirmed on the Acer (see `docs/phase1_report.md` open items).

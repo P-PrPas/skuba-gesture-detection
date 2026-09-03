@@ -87,7 +87,7 @@ def main():
     if args.clip:
         rows = [r for r in rows if r["clip_id"] == args.clip]
 
-    pose = PoseEstimator(POSE_BACKBONE)
+    pose = PoseEstimator(POSE_BACKBONE, num_poses=1)  # training clips are single-subject
     hands = HandLandmarker()
 
     summary = []

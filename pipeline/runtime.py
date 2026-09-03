@@ -41,7 +41,16 @@ def frame_to_vec(frame_bgr, pose, hands, *, detect_hands=True,
         timings["pose"] = (time.perf_counter() - t0) * 1000.0
     if kp is None:
         return None, None, None, (None, None)
+    v, boxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
+                               prev_hand_norms=prev_hand_norms, timings=timings)
+    return v, kp, boxes, hn
 
+
+def vec_from_kp(frame_bgr, kp, hands, *, detect_hands=True,
+                prev_hand_norms=(None, None), timings=None):
+    """One person's Keypoints → (vec152, [lh_box, rh_box], (lh_norm, rh_norm)).
+    The per-person half of the pipeline — `frame_to_vec` (single) and the
+    multi-person path both call this."""
     body_norm = normalize_body(kp.xy)
     scale = kp.shoulder_width or 80.0
     boxes, hand_norms = [], []
@@ -56,10 +65,10 @@ def frame_to_vec(frame_bgr, pose, hands, *, detect_hands=True,
         else:
             hand_norms.append(prev_hand_norms[i])
     if timings is not None:
-        timings["hands"] = (time.perf_counter() - th) * 1000.0
+        timings["hands"] = timings.get("hands", 0.0) + (time.perf_counter() - th) * 1000.0
 
     v = fuse(body_norm, hand_norms[0], hand_norms[1])
-    return v, kp, boxes, tuple(hand_norms)
+    return v, boxes, tuple(hand_norms)
 
 
 class GestureClassifier:
