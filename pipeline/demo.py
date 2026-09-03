@@ -173,12 +173,33 @@ def draw_people(frame, results, fps, tm, n, hand_every):
 
 
 def _open(args):
-    src = args.video if args.video else args.camera
-    cap = cv2.VideoCapture(src)
-    if not cap.isOpened():
-        raise SystemExit(f"cannot open video source {src!r}")
-    cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)  # bake in .MOV rotation metadata
-    return cap
+    if args.video:
+        cap = cv2.VideoCapture(args.video)
+        if not cap.isOpened():
+            raise SystemExit(f"cannot open video {args.video!r}")
+        cap.set(cv2.CAP_PROP_ORIENTATION_AUTO, 1)
+        return cap
+
+    # webcam: on Windows the default MSMF backend often hangs or opens a dead
+    # handle — try DSHOW first, then MSMF, then the default, and confirm a real
+    # frame comes back before returning.
+    import sys
+    backends = ([("DSHOW", cv2.CAP_DSHOW), ("MSMF", cv2.CAP_MSMF), ("any", cv2.CAP_ANY)]
+                if sys.platform == "win32" else [("any", cv2.CAP_ANY)])
+    for name, be in backends:
+        cap = cv2.VideoCapture(args.camera, be)
+        if cap.isOpened():
+            for _ in range(10):                       # let the sensor warm up
+                ok, _f = cap.read()
+                if ok and _f is not None:
+                    print(f"camera {args.camera} OK  "
+                          f"{int(cap.get(3))}x{int(cap.get(4))}  (backend {name})")
+                    return cap
+        cap.release()
+    raise SystemExit(
+        f"no frames from camera {args.camera}. Try --camera 1 / 2. "
+        "Check nothing else is using the webcam (Zoom/Teams/browser) and that "
+        "camera access is allowed (Windows Settings > Privacy > Camera; AVG).")
 
 
 _ROT = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180,
@@ -267,10 +288,15 @@ def live(args):
 
     writer = None
     fps_out = cap.get(cv2.CAP_PROP_FPS) or 30
+    win = "SKUBA gesture demo"
     if args.record:
         Path(args.record).parent.mkdir(parents=True, exist_ok=True)
+    else:
+        cv2.namedWindow(win, cv2.WINDOW_NORMAL)
+        cv2.resizeWindow(win, 720, 1000)
+        cv2.moveWindow(win, 60, 40)
     print("demo running" + (f" -> {args.record}" if args.record else
-                            " — focus the window for keys"))
+                            " — the window should be open; click it, press q to quit"))
 
     while True:
         if not paused:
@@ -279,6 +305,8 @@ def live(args):
                 if args.video and not args.record:
                     cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                     continue
+                print("camera returned no frame — stopping "
+                      "(webcam disconnected or grabbed by another app?)")
                 break
             frame = _rot(frame, args.rotate)
             if args.mirror and not args.video:
@@ -327,7 +355,7 @@ def live(args):
         if writer:
             writer.write(frame)
             continue
-        cv2.imshow("SKUBA gesture demo", frame)
+        cv2.imshow(win, frame)
 
         k = cv2.waitKey(1) & 0xFF
         if k in (ord("q"), 27):
