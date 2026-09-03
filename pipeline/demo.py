@@ -70,9 +70,13 @@ def _draw_hands(frame, hand_lms, colour=(255, 0, 255)):
 
 
 def _panel(img, x, y, w, h, alpha=0.55):
-    sub = img[y:y + h, x:x + w]
-    img[y:y + h, x:x + w] = cv2.addWeighted(sub, 1 - alpha,
-                                            np.zeros_like(sub), alpha, 0)
+    H, W = img.shape[:2]
+    x0, y0 = max(0, int(x)), max(0, int(y))
+    x1, y1 = min(W, int(x) + int(w)), min(H, int(y) + int(h))
+    if x1 <= x0 or y1 <= y0:                          # off-screen / degenerate
+        return
+    sub = img[y0:y1, x0:x1]
+    img[y0:y1, x0:x1] = cv2.addWeighted(sub, 1 - alpha, np.zeros_like(sub), alpha, 0)
 
 
 def _load_truth(csv_path, video_name):
@@ -172,11 +176,11 @@ def draw_people(frame, results, fps, tm, n, hand_every):
         cv2.rectangle(frame, (x0, y0), (x1, y1), sk, 1)
         for b in r.boxes:
             cv2.rectangle(frame, (b[0], b[1]), (b[2], b[3]), CYAN, 1)
-        # label chip anchored just above the person's box (below if near the top)
+        # label chip anchored near the person's box, clamped to the frame
         txt = f"P{r.id}  {r.out.label.upper()}  {r.out.confidence:.2f}"
         tw = cv2.getTextSize(txt, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0][0]
-        cy = y0 - 10 if y0 > 40 else y1 + 28
-        cx = min(max(x0, 4), w - tw - 12)
+        cy = max(24, y0 - 10) if y0 > 40 else min(h - 8, y1 + 28)
+        cx = min(max(x0, 8), max(8, w - tw - 12))
         _panel(frame, cx - 4, cy - 22, tw + 12, 30)
         cv2.putText(frame, txt, (cx, cy), cv2.FONT_HERSHEY_SIMPLEX, 0.6,
                     _label_col(r.out.label), 2, cv2.LINE_AA)
@@ -228,6 +232,16 @@ def _rot(frame, deg):
     return cv2.rotate(frame, _ROT[deg % 360]) if deg % 360 in _ROT else frame
 
 
+def _fit_width(frame, width):
+    """Resize to `width` keeping aspect, both dims forced even (mp4 encoders)."""
+    fh, fw = frame.shape[:2]
+    if fw == width:
+        return frame
+    w = width - (width & 1)
+    h = round(fh * w / fw)
+    return cv2.resize(frame, (w, h - (h & 1)))
+
+
 def benchmark(args):
     cap = _open(args)
     pose, hands = PoseEstimator("mediapipe"), HandLandmarker()
@@ -243,10 +257,7 @@ def benchmark(args):
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 continue
             frame = _rot(frame, args.rotate)
-            fh, fw = frame.shape[:2]
-            if fw != args.display_width:        # match the live path
-                frame = cv2.resize(frame, (args.display_width,
-                                           round(fh * args.display_width / fw)))
+            frame = _fit_width(frame, args.display_width)
             if warm < 10:                       # let XNNPACK / caches settle
                 frame_to_vec(frame, pose, hands, detect_hands=(i % he == 0),
                              prev_hand_norms=prev)
@@ -335,10 +346,7 @@ def live(args):
             # normalise to a standard width so the overlay (tuned for ~1080-wide
             # portrait clips) stays the right size on any webcam, and the window
             # matches the frame's aspect. pose runs on this frame.
-            fh, fw = frame.shape[:2]
-            if fw != args.display_width:
-                frame = cv2.resize(frame, (args.display_width,
-                                           round(fh * args.display_width / fw)))
+            frame = _fit_width(frame, args.display_width)
             if not args.record and i == 0:
                 cv2.resizeWindow(win, frame.shape[1], frame.shape[0])
             if args.record and writer is None:   # size from the real (rotated) frame
