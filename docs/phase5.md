@@ -155,9 +155,28 @@ Same `main3.MOV`, `--detector yolo`, `DETECT_EVERY=2`, imgsz 512
 **Both more reliable and faster** — YOLO's person detector is trained on COCO's
 huge pose/occlusion variety, so it catches the person on the floor that
 BlazePose's upright-biased detector misses, and running it every 2nd frame at a
-small crop size costs less than MediaPipe's own heavier multi-pose model. The
-remaining gap to 100 % is motion blur (YOLO fails there too) and the false 3rd
-"person" (the Pepper mannequin in shot) — tune `DETECT_CONF` / `DETECT_MIN_AREA_FRAC`.
+small crop size costs less than MediaPipe's own heavier multi-pose model.
+
+**Crop-quality bugs found + fixed** (`scratchpad` diag, then `_process_yolo`):
+- *Tight crop breaks MediaPipe Pose.* At 10 % box padding, 14 % of detections
+  got no pose at all, and a lying person's crop came back as an *upright*
+  skeleton (`torso_lean` ≈ 0 instead of ≈ ±2 rad) → classified `sit`. Padding
+  22 % (following the box shape — a square crop is worse, it pulls in
+  background) drops no-pose to 10 % and recovers `laying` (main3 frame 320:
+  `[sit 0.91, laying 0.80]` — both people, both right).
+- *Spurious far/small boxes → random class* (a 171 px box → `thumb 0.66`).
+  `DETECT_MIN_AREA_FRAC` 0.015 → 0.025, plus a pose sanity gate (drop a crop
+  whose skeleton has a collapsed torso or < 12 visible joints).
+
+**Remaining misclassification is domain gap, not a bug.** main3's people are
+doing real activities in odd postures — bent over a desk, sitting on the floor
+with a suitcase — not performing the 12 vocab gestures. Full-frame and
+YOLO-crop give the *identical* verdict for these (`sit 0.77`, `torso_lean
+−0.2`), so it isn't the crop: the classifier has no "standing / working / doing
+stuff" class and a forward-leaning person lands nearest `sit`. Phase 6 field
+data (people in the robot's environment doing non-gesture things, labelled
+`idle`) is the fix; a higher `--floor` routes the borderline calls to
+`unknown` in the meantime.
 
 **Recommendation:** if multi-person is required, `PERSON_DETECTOR = "yolo"` is
 the path — it keeps the whole Phase 2–4 investment (33-landmark features,

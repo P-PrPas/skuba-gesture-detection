@@ -20,7 +20,7 @@ PERSON_DETECTOR = None    # None = MediaPipe's own multi-pose; "yolo" = YOLO11n
 DETECT_IMGSZ = 512        # YOLO input size (640 best recall, 320 fastest)
 DETECT_CONF = 0.45        # person confidence threshold
 DETECT_EVERY = 2          # run YOLO every K frames, hold boxes between
-DETECT_MIN_AREA_FRAC = 0.015  # ignore boxes smaller than this fraction of the
+DETECT_MIN_AREA_FRAC = 0.025  # ignore boxes smaller than this fraction of the
                               # frame area (drops far bystanders / false hits;
                               # area not height, so a person lying down still counts)
 

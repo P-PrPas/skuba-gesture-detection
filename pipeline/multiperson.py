@@ -127,14 +127,25 @@ class MultiPerson:
         alive = set()
         for tid, (x0, y0, x1, y1) in boxes:
             bw, bh = x1 - x0, y1 - y0
-            cx0 = max(0, int(x0 - 0.10 * bw)); cy0 = max(0, int(y0 - 0.10 * bh))
-            cx1 = min(w, int(x1 + 0.10 * bw)); cy1 = min(h, int(y1 + 0.10 * bh))
+            # generous margin that FOLLOWS the box shape: MediaPipe Pose degrades
+            # or fails on a tight box (10% pad -> 14% no-pose, loses the
+            # lying-person's orientation). 22% -> 10% no-pose and recovers
+            # `laying`. A square crop is worse — it pulls in background/other
+            # people for a wide (lying) box.
+            pad = 0.22
+            cx0 = max(0, int(x0 - pad * bw)); cy0 = max(0, int(y0 - pad * bh))
+            cx1 = min(w, int(x1 + pad * bw)); cy1 = min(h, int(y1 + pad * bh))
             t0 = _t.perf_counter()
             kp = pose.estimate_crop(frame_bgr[cy0:cy1, cx0:cx1])
             tp += (_t.perf_counter() - t0) * 1000.0
             if kp is None:
                 continue
             kp.xy[:, 0] += cx0; kp.xy[:, 1] += cy0          # crop -> frame coords
+            # drop garbage poses (spurious tiny detections, MediaPipe wrap-around)
+            sh_hip = float(np.linalg.norm(
+                (kp.xy[11] + kp.xy[12]) / 2 - (kp.xy[23] + kp.xy[24]) / 2))
+            if sh_hip < 0.06 * max(bw, bh) or (kp.visibility > 0.5).sum() < 12:
+                continue
             t0 = _t.perf_counter()
             v, hboxes, hn = vec_from_kp(frame_bgr, kp, hands, detect_hands=detect_hands,
                                        prev_hand_norms=self._prev_hn.get(tid, (None, None)))
