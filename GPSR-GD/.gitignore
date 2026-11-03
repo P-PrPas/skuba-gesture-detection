@@ -1,0 +1,36 @@
+# data — keep raw clips and datasets out of git (versioned separately, see DATA_COLLECTION_SPEC.md)
+/data/*
+!/data/.gitkeep
+# label answer-key — small, text, worth tracking
+!/data/segments.csv
+!/data/segments_main_actions.csv
+
+# models / weights
+*.pt
+*.task
+*.onnx
+/classifier/models/*
+!/classifier/models/.gitkeep
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+
+# misc
+.DS_Store
+/scratch/
+
+# phase 1 benchmark: keep the .docx report + metrics json; montages are embedded
+# in the .docx and the annotated videos are large — regenerate both with the scripts
+/results/phase1/annotated/
+/results/phase1/montages/
+/backbone/models/
+/data/features_ext/
+/data/_ext_tmp/
+/classifier/models/*.joblib
+
+# team reference: example training images + contact sheets
+!/data/samples_ext/
+!/data/samples_ext/**

@@ -1,81 +1,31 @@
 # skuba-gesture-detection
 
-Gesture and posture recognition for a service robot. Pretrained pose/hand
-backbones extract keypoints; a single classifier on the fused, normalized
-feature vector decides the class (or `idle`). See `docs/` for the full picture:
+Monorepo for SKUBA's **Gesture Detection (GD)** projects. Each folder is an
+independent project for a different competition task — its own code, docs,
+requirements and README. Nothing is shared between them; `cd` into a folder
+and work there.
 
-- `docs/ARCHITECTURE.md` — feature schema, normalization, augmentation, smoothing
-- `docs/IMPLEMENTATION_PLAN.md` — phased roadmap
-- `docs/DATA_COLLECTION_SPEC.md` — recording protocol
-- `CLAUDE.md` — hard constraints (read before changing architecture)
+| Folder | Gesture Detection for… | Status | What it recognizes |
+|---|---|---|---|
+| [`GPSR-GD/`](GPSR-GD/) | **GPSR** (General Purpose Service Robot) | Archived — old project, kept as reference | 12 body-posture / hand-gesture / pose classes (`sit`, `squat`, `laying`, `raise_*_hand`, `ok`, `two_finger`, `thumb`, `t_pose`, `glico_pose`, `mini_heart`, `idle`) from MediaPipe Pose + Hands keypoints and a fused-feature classifier |
+| [`Waving-GD/`](Waving-GD/) | **Waving detection** | Active — new work starts here | A single gesture: is the person waving or not |
 
-## Status
+## Where to work
 
-- **Phase 0** ✅ environment, backbone wrappers, smoke test.
-- **Phase 1** 🟡 **Backbone: MediaPipe Pose + Hands (Tasks API, lite model)** —
-  final. CPU+GPU benchmark of 8 backbones; MediaPipe Tasks-lite is 25 ms/frame
-  on CPU (as fast as YOLO11n on CUDA), 0 VRAM, no keypoint bugs.
-  `results/phase1/backbone_report.docx`, `docs/phase1_report.md`. Open: confirm
-  combined FPS on the Acer; `laying` still weak (see Phase 2).
-- **Phase 2** 🟡 extraction + augmentation pipeline done and run.
-  **1367 frames, 17 clips, 15 classes, 2 subjects** (s01 = `main.MOV`, all
-  classes; s02 = `main2/main3.MOV`, `laying` + `sit`). Only 2 subjects and no
-  more recording possible, so `phase2_exit_met: false` stays — but the pipeline
-  handles it: **limb-length jitter augmentation** for body-proportion variety, a
-  **cross-person hold-out fold** (`xperson_*.npz` — real `sit` generalization
-  number; `laying` is s02-only), and Phase 6 field testing as the real gate.
-  See `docs/ARCHITECTURE.md` "Evaluating with a small subject pool".
-
-## Setup
-
-This dev box's AV (AVG) does TLS interception, so pip needs the extra root.
-Any Python 3.9–3.13 works (mediapipe 1.0.1 is a pure `py3-none` wheel).
-
-```bash
-python -m venv .venv
-.venv/Scripts/python -m pip install -r requirements.txt \
-    --trusted-host pypi.org --trusted-host files.pythonhosted.org
-python scripts/fix_certs.py                 # append AV root to certifi (for .task model downloads)
-```
-
-The GPU backbone comparison (Phase 1 only) needs `requirements-phase1-gpu.txt`
-on top; the core install above is all the pipeline itself uses.
-
-## Smoke test
-
-```bash
-python smoke_test.py --source 0                          # webcam
-python smoke_test.py --source data/main.MOV --save out.mp4 --max-frames 200
-```
-
-Overlays body skeleton + wrist-anchored hand landmarks. `--pose {mediapipe,yolo}`
-(mediapipe is the locked choice; yolo kept for comparison only).
-
-## Dataset pipeline
-
-`data/main.MOV` is one long take covering every class. `data/segments.csv` is
-the hand-checked label key (`clip_id, subject_id, session_id, class, start_s,
-end_s, ...`).
-
-```bash
-python scripts/cut_segments.py data/segments.csv data/clips   # 1. CSV -> per-class clips (per-row source_video)
-python -m pipeline.extract_features                           # 2. clips -> data/features/<clip>.npz
-python -m pipeline.build_dataset                             # 3. -> data/dataset/{train,val,test}.npz + card
-```
-
-`data/dataset/dataset_card.json` records the feature schema, backbone, aug
-params, per-class counts, split method, and whether the Phase 2 exit criterion
-is met. To add more recordings: drop the video in `data/`, add rows to
-`segments.csv` with a new `subject_id`, and re-run the three steps.
+- New development → `Waving-GD/`.
+- `GPSR-GD/` is frozen. Its pipeline (backbone wrappers, feature schema,
+  classifier, multi-person demo) and its docs are a useful reference or source
+  of reusable pieces, but copy what you need into `Waving-GD/` rather than
+  importing across folders.
+- Each folder's imports are rooted at that folder (`from backbone...`,
+  `import config`), so run Python commands from inside the folder, e.g.
+  `cd GPSR-GD && python -m pipeline.demo`.
 
 ## Layout
 
 ```
-backbone/    thin wrappers around pose/hand models — no training code
-features/    schema, normalization, fusion, augmentation (the 152-d contract)
-pipeline/    extract_features, build_dataset  (real-time loop lands in Phase 5)
-scripts/     cut_segments, fix_certs
-docs/        design docs
-data/        raw clips, per-clip features, built dataset (git-ignored except segments.csv)
-classifier/  Phase 3
+skuba-gesture-detection/
+├── README.md        this file
+├── GPSR-GD/         Gesture Detection for GPSR (archived)
+└── Waving-GD/       Gesture Detection for waving (active)
 ```

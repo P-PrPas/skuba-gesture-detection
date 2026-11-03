@@ -14,7 +14,7 @@ evaluation — is light and stays on the laptop.
 ```python
 # 1. clone + deps
 !git clone https://github.com/P-PrPas/skuba-gesture-detection.git
-%cd skuba-gesture-detection
+%cd skuba-gesture-detection/GPSR-GD
 !pip -q install "mediapipe==1.0.1" "opencv-contrib-python==4.11.0.86" "numpy>=1.26,<3" pyarrow requests
 !pip -q install roboflow          # only for the roboflow_ily source
 ```
