@@ -26,10 +26,40 @@ from features.keypoints import features_from_raw
 from features.temporal import TrackSmoother
 
 
+def resolve_device(d="auto"):
+    """'auto' -> CUDA gpu 0 if available, else Apple 'mps', else 'cpu'. Digits -> gpu index."""
+    if str(d).isdigit():
+        return int(d)
+    if d != "auto":
+        return d
+    import torch
+    if torch.cuda.is_available():
+        return 0
+    return "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu"
+
+
+def load_pose(name: str):
+    """Use weights/<name>.pt; download it there if missing (ultralytics assets)."""
+    path = C.WEIGHTS / f"{name}.pt"
+    if not path.exists():
+        from ultralytics.utils.downloads import attempt_download_asset
+        path.parent.mkdir(parents=True, exist_ok=True); attempt_download_asset(str(path))
+    return YOLO(str(path))
+
+
+def check_head(path: Path) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f"{path} not found")
+    if path.read_bytes()[:20].startswith(b"version https://git-"):
+        raise RuntimeError(f"{path} is a Git LFS pointer, not the weights. Run:  git lfs install && git lfs pull")
+
+
 class RaiseHandDetector:
     def __init__(self, model_name: str, pose_model: str = C.POSE_MODEL, window: int = 3,
-                 device: str | int = 0, half: bool = True, thr: float | None = None, min_box_frac: float = 0.0):
-        self.pose = YOLO(str(C.WEIGHTS / f"{pose_model}.pt"))
+                 device: str | int = 0, half: bool = True, thr: float | None = None, min_box_frac: float = 0.0,
+                 imgsz: int = C.POSE_IMGSZ):
+        check_head(C.model_path(model_name))
+        self.pose = load_pose(pose_model); self.imgsz = imgsz
         self.cls = Classifier(C.model_path(model_name))
         self.thr = self.cls.thr if thr is None else thr
         self.smooth = TrackSmoother(window); self.device, self.half = device, half
@@ -38,7 +68,7 @@ class RaiseHandDetector:
 
     def update(self, frame: np.ndarray) -> list[dict]:
         t0 = time.perf_counter()
-        r = self.pose.track(frame, persist=True, imgsz=C.POSE_IMGSZ, conf=C.POSE_CONF, device=self.device,
+        r = self.pose.track(frame, persist=True, imgsz=self.imgsz, conf=C.POSE_CONF, device=self.device,
                             verbose=False)[0]
         out, alive = [], set()
         if r.boxes is not None and len(r.boxes):
@@ -81,9 +111,9 @@ if __name__ == "__main__":
     ap.add_argument("--pose-model", default=C.POSE_MODEL); ap.add_argument("--window", type=int, default=3)
     ap.add_argument("--stride", type=int, default=1, help="process every n-th frame (simulate low FPS)")
     ap.add_argument("--save", help="explicit output path"); ap.add_argument("--render", action="store_true", help="save to outputs/runs/<model>/videos/<clip>.mp4")
-    ap.add_argument("--show", action="store_true"); ap.add_argument("--device", default="0")
+    ap.add_argument("--show", action="store_true"); ap.add_argument("--device", default="auto", help="auto | cpu | mps | 0 (gpu index)")
     a = ap.parse_args()
-    det = RaiseHandDetector(a.model, a.pose_model, a.window, device=a.device if a.device == "cpu" else int(a.device), half=False)
+    det = RaiseHandDetector(a.model, a.pose_model, a.window, device=resolve_device(a.device), half=False)
     if a.render:
         a.save = str(C.RUNS / a.model / "videos" / f"{Path(a.source).stem}.mp4"); Path(a.save).parent.mkdir(parents=True, exist_ok=True)
     cap = cv2.VideoCapture(int(a.source) if a.source.isdigit() else a.source); wr = None; n = 0; lat = []
