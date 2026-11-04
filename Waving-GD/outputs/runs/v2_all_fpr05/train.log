@@ -1,0 +1,24 @@
+args: {'name': 'v2_all_fpr05', 'features': 'all', 'epochs': 60, 'batch': 512, 'lr': 0.001, 'noise': 0.05, 'max_hn_fpr': 0.05, 'patience': 10, 'seed': 0, 'overwrite': False}
+train 81209 (pos 4777)  val 15055 (pos 983)  features=all(73) device=cuda
+ep   0 loss 0.2309 val AP 0.7609 (best 0.7609@0) 1s
+ep   5 loss 0.1155 val AP 0.7933 (best 0.7970@2) 4s
+ep  10 loss 0.1017 val AP 0.8054 (best 0.8128@9) 8s
+ep  15 loss 0.0958 val AP 0.8180 (best 0.8291@11) 12s
+ep  20 loss 0.0892 val AP 0.8117 (best 0.8360@19) 15s
+ep  25 loss 0.0833 val AP 0.8193 (best 0.8360@19) 19s
+early stop
+
+best epoch 19  val AP 0.8360  thr 0.84  F1 0.769 P 0.691 R 0.868  hard-neg FPR 2.71%
+
+== validation  (thr=0.84)
+source/role                    n  FP rate   recall
+hmdb51/pos                    45             71.1%
+hmdb51/hardneg              1678     7.3%         
+hmdb51/neutral              1564     0.3%         
+kinetics700/pos              268             73.5%
+kinetics700/hardneg         6083     3.4%         
+kinetics700/neutral         1948     1.8%         
+scb/pos                      670             93.1%
+scb/hardneg                 2799     0.4%         
+worst false-positive classes: adjusting glasses 37%(n=81), brush_hair 21%(n=505), sipping cup 20%(n=136), eating cake 10%(n=124), combing hair 9%(n=129), answering questions 9%(n=256), smoking 8%(n=240), tasting food 7%(n=125)
+saved /root/P/SKUBA/skuba-gesture-detection/Waving-GD/outputs/runs/v2_all_fpr05/model.pt

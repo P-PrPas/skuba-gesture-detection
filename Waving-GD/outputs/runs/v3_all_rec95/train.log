@@ -1,0 +1,24 @@
+args: {'name': 'v3_all_rec95', 'features': 'all', 'epochs': 60, 'batch': 512, 'lr': 0.001, 'noise': 0.05, 'max_hn_fpr': 0.06, 'min_recall': 0.95, 'patience': 10, 'seed': 0, 'overwrite': False}
+train 81209 (pos 4777)  val 15055 (pos 983)  features=all(73) device=cuda
+ep   0 loss 0.2309 val AP 0.7609 (best 0.7609@0) 1s
+ep   5 loss 0.1155 val AP 0.7933 (best 0.7970@2) 4s
+ep  10 loss 0.1017 val AP 0.8054 (best 0.8128@9) 8s
+ep  15 loss 0.0958 val AP 0.8180 (best 0.8291@11) 11s
+ep  20 loss 0.0892 val AP 0.8117 (best 0.8360@19) 15s
+ep  25 loss 0.0833 val AP 0.8193 (best 0.8360@19) 18s
+early stop
+
+best epoch 19  val AP 0.8360  thr 0.55  F1 0.730 P 0.592 R 0.953  hard-neg FPR 4.59%
+
+== validation  (thr=0.55)
+source/role                    n  FP rate   recall
+hmdb51/pos                    45             91.1%
+hmdb51/hardneg              1678    10.3%         
+hmdb51/neutral              1564     0.5%         
+kinetics700/pos              268             86.9%
+kinetics700/hardneg         6083     6.1%         
+kinetics700/neutral         1948     3.7%         
+scb/pos                      670             99.0%
+scb/hardneg                 2799     0.9%         
+worst false-positive classes: adjusting glasses 43%(n=81), brush_hair 27%(n=505), sipping cup 26%(n=136), sneezing 18%(n=198), combing hair 16%(n=129), watching tv 15%(n=127), eating cake 15%(n=124), smoke 12%(n=311)
+saved /root/P/SKUBA/skuba-gesture-detection/Waving-GD/outputs/runs/v3_all_rec95/model.pt

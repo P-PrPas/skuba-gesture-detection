@@ -1,0 +1,15 @@
+clip,t_start,t_end,label,note
+IMG_8242,0.00,4.25,1,far-side hand raised/waving the whole time (near hand rubs face 2.0-4.2: distractor)
+IMG_8242,4.25,4.75,-1,transition
+IMG_8242,4.75,6.50,0,both hands down
+IMG_8242,6.50,6.90,-1,transition
+IMG_8242,6.90,9.60,1,waving
+IMG_8243,0.00,2.60,0,holding bottle
+IMG_8243,2.60,3.00,-1,transition
+IMG_8243,3.00,5.25,1,waving
+IMG_8243,5.25,5.60,-1,transition
+IMG_8243,5.60,7.30,0,hands down / drinking
+IMG_8243,7.30,7.70,-1,transition
+IMG_8243,7.70,9.00,1,waving
+IMG_8243,9.00,9.40,-1,transition
+IMG_8243,9.40,10.10,0,hand near mouth (drinking) / down

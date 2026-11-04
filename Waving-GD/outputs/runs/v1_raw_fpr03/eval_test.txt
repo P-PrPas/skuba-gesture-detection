@@ -1,0 +1,27 @@
+
+IMG_8242  (48 frames @ ~5 FPS, 44 labelled)  '#'=raise ok  '.'=not-raise ok  'x'=error
+ground truth     |############################  ............  .###############|
+rule             |#### #### ### #### #### ###   .. ... ....   ## ### #### ### |
+rule+smooth      |#### #### ### #### #### ###   x. ... ....   ## ### #### ### |
+v1_all_fpr03     |###x #x## x#x xxxx xxxx xx#   .. ... ....   ## ### #### ### |
+v1_all_fpr03+smooth |###x xx## ##x xxxx xxxx xxx   .. ... ....   x# ### #### ### |
+v1_raw_fpr03     |#xxx xxx# x#x xxxx xxxx xx#   .. ... ....   ## ### #### ### |
+v1_raw_fpr03+smooth |##xx xxxx x#x xxxx xxxx xxx   .. ... ....   x# ### #### ### |
+
+IMG_8243  (50 frames @ ~5 FPS, 43 labelled)  '#'=raise ok  '.'=not-raise ok  'x'=error
+ground truth     |................  .############## ...........  .#######  ...|
+rule             |x.... .... ....   ### ##### ####  .... .... .  ## ####   xx |
+rule+smooth      |xx... .... ....   ### ##### ####  x... .... .  ## ####   xx |
+v1_all_fpr03     |..... .... ....   ### ##x## x##x  .... .... .  ## ##x#   .. |
+v1_all_fpr03+smooth |..... .... ....   x## ##### ####  .... .... .  x# ####   .. |
+v1_raw_fpr03     |..... .... ....   ### ##### ###x  .... .... .  ## ####   .. |
+v1_raw_fpr03+smooth |..... .... ....   x## ##### ####  .... .... .  x# ####   .. |
+
+== overall on labelled frames (both clips)
+method                acc      P      R     F1   FP   FN     n
+rule                95.4%  93.0% 100.0%  0.964    4    0    87
+rule+smooth         92.0%  88.3% 100.0%  0.938    7    0    87
+v1_all_fpr03        79.3% 100.0%  66.0%  0.795    0   18    87
+v1_raw_fpr03        78.2% 100.0%  64.2%  0.782    0   19    87
+v1_all_fpr03+smooth  79.3% 100.0%  66.0%  0.795    0   18    87
+v1_raw_fpr03+smooth  74.7% 100.0%  58.5%  0.738    0   22    87

@@ -1,0 +1,26 @@
+args: {'name': 'v3_raw_rec95', 'features': 'raw', 'epochs': 60, 'batch': 512, 'lr': 0.001, 'noise': 0.05, 'max_hn_fpr': 0.06, 'min_recall': 0.95, 'patience': 10, 'seed': 0, 'overwrite': False}
+train 81209 (pos 4777)  val 15055 (pos 983)  features=raw(39) device=cuda
+ep   0 loss 0.3428 val AP 0.6275 (best 0.6275@0) 1s
+ep   5 loss 0.1702 val AP 0.7679 (best 0.7679@5) 4s
+ep  10 loss 0.1441 val AP 0.8074 (best 0.8074@10) 7s
+ep  15 loss 0.1292 val AP 0.8142 (best 0.8142@15) 10s
+ep  20 loss 0.1235 val AP 0.8121 (best 0.8229@19) 13s
+ep  25 loss 0.1155 val AP 0.8065 (best 0.8229@19) 17s
+ep  30 loss 0.1145 val AP 0.8238 (best 0.8326@27) 20s
+ep  35 loss 0.1066 val AP 0.8178 (best 0.8326@27) 24s
+early stop
+
+best epoch 27  val AP 0.8326  thr 0.56  F1 0.691 P 0.543 R 0.951  hard-neg FPR 5.59%
+
+== validation  (thr=0.56)
+source/role                    n  FP rate   recall
+hmdb51/pos                    45             97.8%
+hmdb51/hardneg              1678    11.0%         
+hmdb51/neutral              1564     0.8%         
+kinetics700/pos              268             85.4%
+kinetics700/hardneg         6083     7.0%         
+kinetics700/neutral         1948     6.4%         
+scb/pos                      670             98.8%
+scb/hardneg                 2799     1.3%         
+worst false-positive classes: adjusting glasses 46%(n=81), sipping cup 35%(n=136), brush_hair 31%(n=505), watching tv 27%(n=127), drinking shots 24%(n=152), eating cake 21%(n=124), combing hair 18%(n=129), answering questions 14%(n=256)
+saved /root/P/SKUBA/skuba-gesture-detection/Waving-GD/outputs/runs/v3_raw_rec95/model.pt

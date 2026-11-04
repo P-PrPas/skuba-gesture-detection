@@ -1,0 +1,19 @@
+# pose weights (downloadable) and anything large / data
+/weights/
+*.pt
+/dataset/*.MOV
+/dataset/*.mp4
+/data/*
+!/data/test_segments.csv
+.venv/
+
+# outputs: only the trained classifier heads + their logs are tracked (no videos, probes, sheets)
+/outputs/*
+!/outputs/runs/
+/outputs/runs/*
+!/outputs/runs/*/
+/outputs/runs/*/*
+!/outputs/runs/*/model.pt
+!/outputs/runs/*/model.json
+!/outputs/runs/*/train.log
+!/outputs/runs/*/eval_test.txt
